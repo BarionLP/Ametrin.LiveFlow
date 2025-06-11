@@ -1,21 +1,18 @@
-using System.Diagnostics;
-
 namespace Ametrin.LiveFlow;
 
-public sealed class PagedCache<T>(IPageableDataSource<T> dataSource, int pageSize, int maxPagesInCache)
+public sealed class PagedCache<T>(IPageableDataSource<T> dataSource, PagedCacheConfig config)
 {
     private readonly IPageableDataSource<T> dataSource = dataSource;
-    private readonly int pageSize = pageSize;
-    private readonly int maxPagesInCache = maxPagesInCache;
-    internal readonly Dictionary<int, Page> Cache = new(capacity: maxPagesInCache);
-    internal readonly LRUSet RequestHistroy = new(capacity: maxPagesInCache);
-    internal readonly Stack<T[]> PagePool = new(capacity: maxPagesInCache);
+    internal readonly Dictionary<int, Page> Cache = new(capacity: config.MaxPagesInCache);
+    internal readonly LRUSet RequestHistroy = new(capacity: config.MaxPagesInCache);
+    internal readonly Stack<T[]> PagePool = new(capacity: config.MaxPagesInCache);
+
+    public PagedCacheConfig Config { get; } = config;
+    public int PageSize => Config.PageSize;
 
     public async Task<Option<T>> TryGetValueAsync(int index)
     {
         var (pageNumber, offset) = GetPageNumberAndItemOffset(index);
-        var pageStartIndex = pageNumber * pageSize;
-
 
         if (Cache.TryGetValue(pageNumber, out var page))
         {
@@ -24,7 +21,7 @@ public sealed class PagedCache<T>(IPageableDataSource<T> dataSource, int pageSiz
             return Option.Success(page.Buffer[offset]);
         }
 
-        if (Cache.Count >= maxPagesInCache)
+        if (Cache.Count >= Config.MaxPagesInCache)
         {
             var leastRecentPageNumber = RequestHistroy.PopLeastRecent();
             PagePool.Push(Cache[leastRecentPageNumber].Buffer);
@@ -33,16 +30,17 @@ public sealed class PagedCache<T>(IPageableDataSource<T> dataSource, int pageSiz
 
         if (!PagePool.TryPop(out var buffer))
         {
-            buffer = new T[pageSize];
+            buffer = new T[PageSize];
         }
 
+        var pageStartIndex = pageNumber * PageSize;
         var result = await dataSource.TryGetPageAsync(pageStartIndex, buffer);
 
-        if (OptionsMarshall.TryGetValue(result, out var value))
+        if (OptionsMarshall.TryGetValue(result, out var elementsWritten))
         {
-            Cache[pageNumber] = new(value.buffer, value.elementsWritten);
+            Cache[pageNumber] = new(buffer, elementsWritten);
             RequestHistroy.Add(pageNumber);
-            return offset < value.elementsWritten ? value.buffer[offset] : Option.Error<T>();
+            return offset < elementsWritten ? buffer[offset] : Option.Error<T>();
         }
 
         PagePool.Push(buffer);
@@ -52,7 +50,6 @@ public sealed class PagedCache<T>(IPageableDataSource<T> dataSource, int pageSiz
     public Option<T> TryGetValueFromCache(int index)
     {
         var (pageNumber, offset) = GetPageNumberAndItemOffset(index);
-        // var pageStartIndex = pageNumber * pageSize;
 
         if (Cache.TryGetValue(pageNumber, out var page))
         {
@@ -66,9 +63,11 @@ public sealed class PagedCache<T>(IPageableDataSource<T> dataSource, int pageSiz
 
     public bool IsInCache(int index)
     {
-        var (pageIndex, pageOffset) = GetPageNumberAndItemOffset(index);
-        return IsInCacheInternal(pageIndex, pageOffset);
+        var (pageNumber, itemOffset) = GetPageNumberAndItemOffset(index);
+        return Cache.TryGetValue(pageNumber, out var page) && itemOffset < page.Size;
     }
+
+    public Task<Option<int>> TryGetSourceCountAsync() => dataSource.TryGetItemCountAsync();
 
     public void ClearCache()
     {
@@ -80,9 +79,7 @@ public sealed class PagedCache<T>(IPageableDataSource<T> dataSource, int pageSiz
         RequestHistroy.Clear();
     }
 
-    private (int pageNumber, int itemOffset) GetPageNumberAndItemOffset(int index) => (index / pageSize, index % pageSize);
-
-    private bool IsInCacheInternal(int pageNumber, int itemOffset) => Cache.TryGetValue(pageNumber, out var page) && itemOffset < page.Size;
+    private (int pageNumber, int itemOffset) GetPageNumberAndItemOffset(int index) => (index / PageSize, index % PageSize);
 
     internal readonly record struct Page(T[] Buffer, int Size);
 
@@ -109,4 +106,10 @@ public sealed class PagedCache<T>(IPageableDataSource<T> dataSource, int pageSiz
 
         public void Clear() => list.Clear();
     }
+}
+
+public sealed class PagedCacheConfig
+{
+    public int PageSize { get; init; } = 128;
+    public int MaxPagesInCache { get; init; } = 8;
 }

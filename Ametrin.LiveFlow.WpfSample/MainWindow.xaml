@@ -5,8 +5,13 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Ametrin.LiveFlow.WpfSample"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="LiveFlow WPF Sample" Height="720" Width="1280">
     <Grid>
-        <DataGrid/>
+        <DataGrid x:Name="TestDataGrid"    
+                  EnableRowVirtualization="True"
+                  VirtualizingPanel.IsVirtualizing="True"
+                  VirtualizingPanel.VirtualizationMode="Recycling"
+                  VirtualizingPanel.ScrollUnit="Item"
+                  ScrollViewer.IsDeferredScrollingEnabled="True"/>
     </Grid>
 </Window>

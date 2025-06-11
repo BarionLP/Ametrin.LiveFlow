@@ -2,22 +2,25 @@
 
 public interface IPageableDataSource<T>
 {
-    public Task<Result<(T[] buffer, int elementsWritten)>> TryGetPageAsync(int startIndex, T[] buffer);
+    public Task<Result<int>> TryGetPageAsync(int startIndex, T[] buffer);
+    public Task<Option<int>> TryGetItemCountAsync();
 }
 
 public sealed class MemoryDataSource<T>(ImmutableArray<T> storage) : IPageableDataSource<T>
 {
-    private readonly ImmutableArray<T> storage = storage;
+    public ImmutableArray<T> Storage { get; } = storage;
 
-    public Task<Result<(T[] buffer, int elementsWritten)>> TryGetPageAsync(int startIndex, T[] buffer)
+    public Task<Result<int>> TryGetPageAsync(int startIndex, T[] buffer)
     {
-        if (startIndex >= storage.Length)
+        if (startIndex >= Storage.Length)
         {
-            return Task.FromResult(Result.Error<(T[], int)>(new IndexOutOfRangeException()));
+            return Task.FromResult(Result.Error<int>(new IndexOutOfRangeException()));
         }
-        var length = int.Min(buffer.Length, storage.Length - startIndex);
+        var length = int.Min(buffer.Length, Storage.Length - startIndex);
 
-        storage.AsSpan(startIndex, length).CopyTo(buffer);
-        return Task.FromResult(Result.Success((buffer, length)));
+        Storage.AsSpan(startIndex, length).CopyTo(buffer);
+        return Task.FromResult(Result.Success(length));
     }
+
+    public Task<Option<int>> TryGetItemCountAsync() => Task.FromResult(Option.Success(Storage.Length));
 }

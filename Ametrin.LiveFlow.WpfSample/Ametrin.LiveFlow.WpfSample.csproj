@@ -11,5 +11,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Ametrin.LiveFlow\Ametrin.LiveFlow.csproj" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Bogus" Version="35.6.3" />
+  </ItemGroup>
 
 </Project>
