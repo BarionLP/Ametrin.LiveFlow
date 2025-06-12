@@ -43,6 +43,7 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
         this.cache = cache;
         Count = count;
         ItemProperties = itemProperties;
+        cache.CacheChanged += OnCacheChanged;
     }
 
     public int Count { get; private set; }
@@ -82,21 +83,51 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
         return !args.Cancel;
     }
 
+    public void Refresh()
+    {
+        CollectionChanged?.Invoke(this, new(NotifyCollectionChangedAction.Reset));
+    }
+
+    private async void OnCacheChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+                Debug.Assert(e.OldItems is null or { Count: 0 });
+                Count += e.NewItems!.Count;
+                break;
+
+            case NotifyCollectionChangedAction.Remove:
+                Debug.Assert(e.NewItems is null or { Count: 0 });
+                Count -= e.OldItems!.Count;
+                break;
+
+            case NotifyCollectionChangedAction.Replace:
+                break;
+
+            case NotifyCollectionChangedAction.Reset:
+            default:
+                Count = (await cache.TryGetSourceCountAsync()).OrThrow();
+                break;
+        }
+
+        CollectionChanged?.Invoke(this, e);
+    }
+
     public ReadOnlyCollection<ItemPropertyInfo> ItemProperties { get; }
 
 
-    public IEnumerable SourceCollection { get { for (var i = 0; i < Count; i++) yield return cache.TryGetValueFromCache(i).Or(default!); } }
+    public IEnumerable SourceCollection { get { for (var i = 0; i < cache.Config.PageSize; i++) yield return cache.TryGetValueFromCache(i).Or(default!); } }
     bool ICollectionView.IsCurrentAfterLast => throw new NotImplementedException();
     bool ICollectionView.IsCurrentBeforeFirst => throw new NotImplementedException();
     SortDescriptionCollection? ICollectionView.SortDescriptions => null;
     Predicate<object> ICollectionView.Filter { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
     ObservableCollection<GroupDescription>? ICollectionView.GroupDescriptions => null;
     ReadOnlyObservableCollection<object>? ICollectionView.Groups => null;
-    bool ICollectionView.Contains(object item) => throw new NotSupportedException();
+    bool ICollectionView.Contains(object item) => item is T t && cache.IsInCache(t);
     bool ICollectionView.MoveCurrentTo(object item) => throw new NotSupportedException();
     bool ICollectionView.MoveCurrentToLast() => throw new NotSupportedException();
-    void ICollectionView.Refresh() => throw new NotSupportedException();
-    public IDisposable DeferRefresh() => new DeferredRefresh();
+    IDisposable ICollectionView.DeferRefresh() => new DeferredRefresh();
     IEnumerator<T> IEnumerable<T>.GetEnumerator() => throw new NotSupportedException();
     IEnumerator IEnumerable.GetEnumerator() => SourceCollection.GetEnumerator();
 

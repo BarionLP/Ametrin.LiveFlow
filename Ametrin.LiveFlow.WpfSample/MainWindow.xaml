@@ -7,11 +7,12 @@
         mc:Ignorable="d"
         Title="LiveFlow WPF Sample" Height="720" Width="1280">
     <Grid>
-        <DataGrid x:Name="TestDataGrid"    
+        <DataGrid x:Name="TestDataGrid"
+                  IsReadOnly="True"
                   EnableRowVirtualization="True"
                   VirtualizingPanel.IsVirtualizing="True"
                   VirtualizingPanel.VirtualizationMode="Recycling"
-                  VirtualizingPanel.ScrollUnit="Item"
+                  VirtualizingPanel.ScrollUnit="Pixel"
                   ScrollViewer.IsDeferredScrollingEnabled="True"/>
     </Grid>
 </Window>

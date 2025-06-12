@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Collections.ObjectModel;
 using Ametrin.Optional.Testing.TUnit;
 
 namespace Ametrin.LiveFlow.Test;
@@ -11,8 +12,8 @@ public sealed class PagedCacheTests
         const int DATA_SIZE = 1_000;
         const int PAGE_SIZE = 128;
 
-        var data = Enumerable.Range(0, DATA_SIZE).Select(static i => Guid.NewGuid().ToString()).ToImmutableArray();
-        var cache = new PagedCache<string>(new MemoryDataSource<string>(data), PAGE_SIZE, maxPagesInCache: 3);
+        ObservableCollection<string> data = [.. Enumerable.Range(0, DATA_SIZE).Select(static i => Guid.NewGuid().ToString())];
+        var cache = new PagedCache<string>(new MemoryDataSource<string>(data), new() { PageSize = PAGE_SIZE, MaxPagesInCache = 3 });
 
         await Assert.That(cache.IsInCache(0)).IsFalse();
         await Assert.That(cache.IsInCache(DATA_SIZE / 2)).IsFalse();
@@ -39,19 +40,19 @@ public sealed class PagedCacheTests
 
 
         await Assert.That(cache.TryGetValueAsync(0)).IsSuccess(data[0]);
-        await Assert.That(cache.RequestHistroy.GetMostRecent()).IsEqualTo(0);
+        await Assert.That(cache.RequestHistory.GetMostRecent()).IsEqualTo(0);
 
         await Assert.That(cache.TryGetValueAsync(PAGE_SIZE)).IsSuccess(data[PAGE_SIZE]);
-        await Assert.That(cache.RequestHistroy.GetMostRecent()).IsEqualTo(1);
+        await Assert.That(cache.RequestHistory.GetMostRecent()).IsEqualTo(1);
 
         await Assert.That(cache.TryGetValueAsync(PAGE_SIZE * 2)).IsSuccess(data[PAGE_SIZE * 2]);
-        await Assert.That(cache.RequestHistroy.GetMostRecent()).IsEqualTo(2);
-        await Assert.That(cache.RequestHistroy.GetLeastRecent()).IsEqualTo(0);
+        await Assert.That(cache.RequestHistory.GetMostRecent()).IsEqualTo(2);
+        await Assert.That(cache.RequestHistory.GetLeastRecent()).IsEqualTo(0);
         await Assert.That(cache.PagePool.Count).IsEqualTo(0);
 
         await Assert.That(cache.TryGetValueAsync(PAGE_SIZE * 3)).IsSuccess(data[PAGE_SIZE * 3]);
-        await Assert.That(cache.RequestHistroy.GetMostRecent()).IsEqualTo(3);
-        await Assert.That(cache.RequestHistroy.GetLeastRecent()).IsEqualTo(1);
+        await Assert.That(cache.RequestHistory.GetMostRecent()).IsEqualTo(3);
+        await Assert.That(cache.RequestHistory.GetLeastRecent()).IsEqualTo(1);
         await Assert.That(cache.TryGetValueFromCache(0)).IsError();
         await Assert.That(cache.PagePool.Count).IsEqualTo(0);
     }
