@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using Ametrin.LiveFlow.WPF;
 using Bogus;
 
 namespace Ametrin.LiveFlow.WpfSample;
