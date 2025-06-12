@@ -4,10 +4,8 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
-using Ametrin.Optional;
-using Bogus;
 
-namespace Ametrin.LiveFlow.WpfSample;
+namespace Ametrin.LiveFlow.WPF;
 
 public static class PagedCacheCollectionView
 {

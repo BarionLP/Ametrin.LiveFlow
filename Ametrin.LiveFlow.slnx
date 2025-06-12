@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="Ametrin.LiveFlow.WPF/Ametrin.LiveFlow.WPF.csproj" />
   <Project Path="i:/Coding/Packages/Ametrin.LiveFlow/Ametrin.LiveFlow.Benchmarks/Ametrin.LiveFlow.Benchmarks.csproj" />
   <Project Path="i:/Coding/Packages/Ametrin.LiveFlow/Ametrin.LiveFlow.Sample/Ametrin.LiveFlow.Sample.csproj" />
   <Project Path="i:/Coding/Packages/Ametrin.LiveFlow/Ametrin.LiveFlow.Test/Ametrin.LiveFlow.Test.csproj" />
