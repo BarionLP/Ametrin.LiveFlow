@@ -59,9 +59,10 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
                 return value;
             }
 
-            _ = LoadAsyncAndNotify(index);
+            var temp = Activator.CreateInstance<T>();
+            _ = LoadAsyncAndNotify(index, temp);
 
-            return default!;
+            return temp;
         } 
         set => throw new NotSupportedException(); 
     }
@@ -74,10 +75,10 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
     public event CurrentChangingEventHandler? CurrentChanging;
     public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
-    private async Task LoadAsyncAndNotify(int index)
+    private async Task LoadAsyncAndNotify(int index, T tempObj)
     {
         var item = (await cache.TryGetValueAsync(index)).OrThrow();
-        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, item, default, index));
+        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, newItem: item, oldItem: tempObj, index));
     }
 
     public bool MoveCurrentToFirst() => MoveCurrentToPosition(0);

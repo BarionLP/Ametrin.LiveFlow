@@ -13,7 +13,7 @@ public partial class MainWindow : Window
         .RuleFor(static u => u.Guid, static f => Guid.CreateVersion7())
         ;
 
-    private static readonly MemoryDataSource<User> dataSource = new([.. faker.GenerateLazy(10_0)]);
+    private static readonly MemoryDataSource<User> dataSource = new([.. faker.GenerateLazy(10_000_000)], TimeSpan.FromMilliseconds(200));
 
     private readonly PagedCache<User> cache;
     public MainWindow()
