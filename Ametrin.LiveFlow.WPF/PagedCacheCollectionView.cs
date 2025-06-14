@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Dynamic;
 using System.Globalization;
 
 namespace Ametrin.LiveFlow.WPF;
@@ -16,12 +17,13 @@ public static class PagedCacheCollectionView
         var firstElement = await cache.TryGetValueAsync(0);
         var properties = propertyInfoSource switch
         {
-            PropertyInfoSource.None => new([]),
-            PropertyInfoSource.Type => TypeDescriptor.GetProperties(typeof(T)),
-            PropertyInfoSource.FirstElement => firstElement.Map(static obj => TypeDescriptor.GetProperties(obj!)).Or(static () => new([])),
+            PropertyInfoSource.None => [],
+            PropertyInfoSource.Type => TypeDescriptor.GetProperties(typeof(T)).Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc)),
+            PropertyInfoSource.FirstElement when typeof(T) == typeof(ExpandoObject) => firstElement.Require<IDictionary<string, object?>>().Map(static obj => obj.Select(static pair => new ItemPropertyInfo(pair.Key, pair.Value?.GetType(), null))).Or(static () => []),
+            PropertyInfoSource.FirstElement => firstElement.Map(static obj => TypeDescriptor.GetProperties(obj!).Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc))).Or(static () => []),
             _ => throw new UnreachableException(),
         };
-        return new PagedCacheCollectionView<T>(cache, count.OrThrow(), new([.. properties.Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc))]));
+        return new PagedCacheCollectionView<T>(cache, count.OrThrow(), new([.. properties]));
     }
 }
 
@@ -49,7 +51,23 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
     public bool CanFilter => false;
     public bool CanGroup => false;
     public bool CanSort => false;
-    public T this[int index] { get => cache.TryGetValueAsync(index).Result.OrThrow(); set => throw new NotSupportedException(); }
+    public T this[int index] { 
+        get 
+        { 
+            // preload previous and next page
+            // cannot run concurrently rn
+            //if(index > cache.Config.PageSize)
+            //{
+            //    _ = cache.TryGetValueAsync(index - cache.Config.PageSize);
+            //}
+            //if(index < Count - cache.Config.PageSize)
+            //{
+            //    _ = cache.TryGetValueAsync(index + cache.Config.PageSize);
+            //}
+            return cache.TryGetValueAsync(index).Result.OrThrow();
+        } 
+        set => throw new NotSupportedException(); 
+    }
     public object? CurrentItem => this[CurrentPosition];
     public int CurrentPosition { get; private set; } = 0;
     public bool IsEmpty => false;

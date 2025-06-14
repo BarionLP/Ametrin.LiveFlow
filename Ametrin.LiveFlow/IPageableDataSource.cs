@@ -17,7 +17,7 @@ public sealed class MemoryDataSource<T>(ObservableCollection<T> storage) : IPage
 
     public Task<Result<int>> TryGetPageAsync(int startIndex, T[] buffer)
     {
-        if (startIndex >= Storage.Count)
+        if (startIndex >= Storage.Count || startIndex < 0)
         {
             return Task.FromResult(Result.Error<int>(new IndexOutOfRangeException()));
         }

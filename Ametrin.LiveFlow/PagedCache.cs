@@ -186,6 +186,7 @@ public sealed class PagedCache<T>
 
         public void Add(int value)
         {
+            if (list.Count > 0 && list[^1] == value) return;
             list.Remove(value);
             list.Add(value);
         }
