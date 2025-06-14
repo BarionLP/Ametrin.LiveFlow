@@ -53,18 +53,15 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
     public bool CanSort => false;
     public T this[int index] { 
         get 
-        { 
-            // preload previous and next page
-            // cannot run concurrently rn
-            //if(index > cache.Config.PageSize)
-            //{
-            //    _ = cache.TryGetValueAsync(index - cache.Config.PageSize);
-            //}
-            //if(index < Count - cache.Config.PageSize)
-            //{
-            //    _ = cache.TryGetValueAsync(index + cache.Config.PageSize);
-            //}
-            return cache.TryGetValueAsync(index).Result.OrThrow();
+        {
+            if(OptionsMarshall.TryGetValue(cache.TryGetValueFromCache(index), out var value))
+            {
+                return value;
+            }
+
+            _ = LoadAsyncAndNotify(index);
+
+            return default!;
         } 
         set => throw new NotSupportedException(); 
     }
@@ -76,6 +73,12 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
     public event EventHandler? CurrentChanged;
     public event CurrentChangingEventHandler? CurrentChanging;
     public event NotifyCollectionChangedEventHandler? CollectionChanged;
+
+    private async Task LoadAsyncAndNotify(int index)
+    {
+        var item = (await cache.TryGetValueAsync(index)).OrThrow();
+        CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, item, default, index));
+    }
 
     public bool MoveCurrentToFirst() => MoveCurrentToPosition(0);
     public bool MoveCurrentToNext() => MoveCurrentToPosition(CurrentPosition + 1);

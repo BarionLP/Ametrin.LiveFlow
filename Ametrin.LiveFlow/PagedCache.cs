@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Specialized;
 using System.Diagnostics;
 
@@ -85,37 +86,67 @@ public sealed class PagedCache<T>
     {
         var (pageNumber, offset) = GetPageNumberAndItemOffset(index);
 
-        if (Cache.TryGetValue(pageNumber, out var page))
+        if (!Cache.TryGetValue(pageNumber, out var page))
         {
-            if (offset >= page.Size) return Option.Error<T>();
+            await LoadPageAsnyc(pageNumber);
+            page = Cache[pageNumber];
+        }
+
+        if (offset >= page.Size)
+        {
+            return Option.Error<T>();
+        }
+
+        RequestHistory.Add(pageNumber);
+        return Option.Success(page.Buffer[offset]);
+    }
+
+    private readonly ConcurrentDictionary<int, Task> _activeRequests = [];
+    private async Task LoadPageAsnyc(int pageNumber)
+    {
+        if (Cache.ContainsKey(pageNumber))
+        {
+            return;
+        }
+
+        if (_activeRequests.TryGetValue(pageNumber, out var task))
+        {
+            await task;
+            return;
+        }
+
+        task = Impl();
+        _activeRequests[pageNumber] = task;
+        await task;
+        _activeRequests.Remove(pageNumber, out _);
+        return;
+
+        async Task Impl()
+        {
+            if (Cache.Count >= Config.MaxPagesInCache)
+            {
+                var leastRecentPageNumber = RequestHistory.PopLeastRecent();
+                PagePool.Push(Cache[leastRecentPageNumber].Buffer);
+                Cache.Remove(leastRecentPageNumber);
+            }
+
+            if (!PagePool.TryPop(out var buffer))
+            {
+                buffer = new T[Config.PageSize];
+            }
+
+            var pageStartIndex = pageNumber * Config.PageSize;
+            var result = await dataSource.TryGetPageAsync(pageStartIndex, buffer);
+
+            if (!OptionsMarshall.TryGetValue(result, out var elementsRead))
+            {
+                PagePool.Push(buffer);
+                return;
+            }
+         
+            Cache[pageNumber] = new(buffer, elementsRead);
             RequestHistory.Add(pageNumber);
-            return Option.Success(page.Buffer[offset]);
         }
-
-        if (Cache.Count >= Config.MaxPagesInCache)
-        {
-            var leastRecentPageNumber = RequestHistory.PopLeastRecent();
-            PagePool.Push(Cache[leastRecentPageNumber].Buffer);
-            Cache.Remove(leastRecentPageNumber);
-        }
-
-        if (!PagePool.TryPop(out var buffer))
-        {
-            buffer = new T[Config.PageSize];
-        }
-
-        var pageStartIndex = pageNumber * Config.PageSize;
-        var result = await dataSource.TryGetPageAsync(pageStartIndex, buffer);
-
-        if (OptionsMarshall.TryGetValue(result, out var elementsWritten))
-        {
-            Cache[pageNumber] = new(buffer, elementsWritten);
-            RequestHistory.Add(pageNumber);
-            return offset < elementsWritten ? buffer[offset] : Option.Error<T>();
-        }
-
-        PagePool.Push(buffer);
-        return Option.Error<T>();
     }
 
     public Option<T> TryGetValueFromCache(int index)
