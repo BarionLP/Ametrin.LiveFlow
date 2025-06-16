@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Specialized;
 using System.Diagnostics;
+using System.Threading;
 
 namespace Ametrin.LiveFlow;
 
@@ -10,6 +11,7 @@ public sealed class PagedCache<T>
     internal readonly Dictionary<int, Page> Cache;
     internal readonly LRUSet RequestHistory;
     internal readonly Stack<T[]> PagePool;
+    private readonly Lock @lock = new();
 
     public event NotifyCollectionChangedEventHandler? CacheChanged;
 
@@ -22,6 +24,7 @@ public sealed class PagedCache<T>
         RequestHistory = new(capacity: config.MaxPagesInCache);
         PagePool = new(capacity: config.MaxPagesInCache);
         Config = config;
+        readingSourceSemaphore = new(dataSource.MaxConcurrentConnections);
 
         if (dataSource is INotifyCollectionChanged notifyChanged)
         {
@@ -60,14 +63,13 @@ public sealed class PagedCache<T>
                     }
 
                     var (pageNumber, offset) = GetPageNumberAndItemOffset(e.NewStartingIndex);
-
                     if (Cache.TryGetValue(pageNumber, out var page))
                     {
                         if (offset != page.Size) goto default; // we can't insert without rebuilding the cache
                         page.Buffer[offset] = newElement;
                         Cache[pageNumber] = page with { Size = page.Size + 1 };
                     }
-                    // propagate on cache miss because we need to update the CollectionViews count 
+                    // propagate on cache miss because we need to update the CollectionViews count
                     CacheChanged?.Invoke(this, e); 
                 }
                 break;
@@ -88,7 +90,10 @@ public sealed class PagedCache<T>
 
         if (!Cache.TryGetValue(pageNumber, out var page))
         {
-            await LoadPageAsnyc(pageNumber);
+            if (!OptionsMarshall.IsSuccess(await LoadPageAsnyc(pageNumber)))
+            {
+                return Option.Error<T>();
+            }
             page = Cache[pageNumber];
         }
 
@@ -101,51 +106,64 @@ public sealed class PagedCache<T>
         return Option.Success(page.Buffer[offset]);
     }
 
-    private readonly ConcurrentDictionary<int, Task> _activeRequests = [];
-    private async Task LoadPageAsnyc(int pageNumber)
+    private readonly ConcurrentDictionary<int, Task<ErrorState>> _activeRequests = [];
+    private readonly Lock startingPageLoadLock = new();
+    private readonly SemaphoreSlim readingSourceSemaphore;
+    private async Task<ErrorState> LoadPageAsnyc(int pageNumber)
     {
+        startingPageLoadLock.Enter();
         if (Cache.ContainsKey(pageNumber))
         {
-            return;
+            return default;
         }
 
         if (_activeRequests.TryGetValue(pageNumber, out var task))
         {
-            await task;
-            return;
+            startingPageLoadLock.Exit();
+            return await task;
         }
 
         task = Impl();
         _activeRequests[pageNumber] = task;
-        await task;
+        startingPageLoadLock.Exit();
+        var result = await task;
         _activeRequests.Remove(pageNumber, out _);
-        return;
+        return result;
 
-        async Task Impl()
+        async Task<ErrorState> Impl()
         {
-            if (Cache.Count >= Config.MaxPagesInCache)
+            try
             {
-                var leastRecentPageNumber = RequestHistory.PopLeastRecent();
-                PagePool.Push(Cache[leastRecentPageNumber].Buffer);
-                Cache.Remove(leastRecentPageNumber);
-            }
+                await readingSourceSemaphore.WaitAsync();
+                Debug.Assert(!Cache.ContainsKey(pageNumber));
+                if (Cache.Count >= Config.MaxPagesInCache)
+                {
+                    var leastRecentPageNumber = RequestHistory.PopLeastRecent();
+                    PagePool.Push(Cache[leastRecentPageNumber].Buffer);
+                    Cache.Remove(leastRecentPageNumber);
+                }
 
-            if (!PagePool.TryPop(out var buffer))
+                if (!PagePool.TryPop(out var buffer))
+                {
+                    buffer = new T[Config.PageSize];
+                }
+
+                var pageStartIndex = pageNumber * Config.PageSize;
+                var result = await dataSource.TryGetPageAsync(pageStartIndex, buffer);
+
+                if (!OptionsMarshall.TryGetValue(result, out var elementsRead))
+                {
+                    PagePool.Push(buffer);
+                    return OptionsMarshall.GetError(result);
+                }
+
+                Cache[pageNumber] = new(buffer, elementsRead);
+                return default;
+            }
+            finally
             {
-                buffer = new T[Config.PageSize];
+                readingSourceSemaphore.Release();
             }
-
-            var pageStartIndex = pageNumber * Config.PageSize;
-            var result = await dataSource.TryGetPageAsync(pageStartIndex, buffer);
-
-            if (!OptionsMarshall.TryGetValue(result, out var elementsRead))
-            {
-                PagePool.Push(buffer);
-                return;
-            }
-         
-            Cache[pageNumber] = new(buffer, elementsRead);
-            RequestHistory.Add(pageNumber);
         }
     }
 
@@ -171,6 +189,7 @@ public sealed class PagedCache<T>
 
     public bool IsInCache(T element)
     {
+        using var scope = @lock.EnterScope();
         foreach (var (_, page) in Cache)
         {
             var index = Array.IndexOf(page.Buffer, element);
@@ -188,6 +207,7 @@ public sealed class PagedCache<T>
 
     public void ClearCache()
     {
+        using var scope = @lock.EnterScope();
         foreach (var (_, page) in Cache)
         {
             PagePool.Push(page.Buffer);
@@ -204,12 +224,14 @@ public sealed class PagedCache<T>
     {
         // as long as there are only a few pages in cache we should be fine with a list
         private readonly List<int> list = new(capacity);
+        private readonly Lock @lock = new();
 
         public int GetLeastRecent() => list[0];
         public int GetMostRecent() => list[^1];
 
         public int PopLeastRecent()
         {
+            using var scope = @lock.EnterScope();
             var leastRecent = list[0];
             list.RemoveAt(0);
             return leastRecent;
@@ -217,6 +239,7 @@ public sealed class PagedCache<T>
 
         public void Add(int value)
         {
+            using var scope = @lock.EnterScope();
             if (list.Count > 0 && list[^1] == value) return;
             list.Remove(value);
             list.Add(value);

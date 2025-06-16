@@ -56,4 +56,24 @@ public sealed class PagedCacheTests
         await Assert.That(cache.TryGetValueFromCache(0)).IsError();
         await Assert.That(cache.PagePool.Count).IsEqualTo(0);
     }
+
+    [Test]
+    public async Task HandlesConcurrentRequest()
+    {
+        const int DATA_SIZE = 1_000;
+        const int PAGE_SIZE = 128;
+
+        ObservableCollection<string> data = [.. Enumerable.Range(0, DATA_SIZE).Select(static i => Guid.NewGuid().ToString())];
+        var cache = new PagedCache<string>(new FakeDataSource<string>(data, new() { Delay = TimeSpan.FromMilliseconds(200), MaxConcurrentConnections = 2 }), new() { PageSize = PAGE_SIZE, MaxPagesInCache = 3 });
+
+        var task1 = cache.TryGetValueAsync(0);
+        var task2 = cache.TryGetValueAsync(PAGE_SIZE);
+        var task3 = cache.TryGetValueAsync(PAGE_SIZE + 1);
+        var task4 = cache.TryGetValueAsync(PAGE_SIZE * 2);
+
+        await Assert.That(task1).IsSuccess(data[0]);
+        await Assert.That(task2).IsSuccess(data[PAGE_SIZE]);
+        await Assert.That(task3).IsSuccess(data[PAGE_SIZE + 1]);
+        await Assert.That(task4).IsSuccess(data[PAGE_SIZE * 2]);
+    }
 }

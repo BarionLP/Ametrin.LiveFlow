@@ -13,7 +13,7 @@ public partial class MainWindow : Window
         .RuleFor(static u => u.Guid, static f => Guid.CreateVersion7())
         ;
 
-    private static readonly MemoryDataSource<User> dataSource = new([.. faker.GenerateLazy(10_000_000)], TimeSpan.FromMilliseconds(200));
+    private static readonly FakeDataSource<User> dataSource = new([.. faker.GenerateLazy(10_000_000)], new() { MaxConcurrentConnections = 1, Delay = TimeSpan.FromMilliseconds(1000) });
 
     private readonly PagedCache<User> cache;
     public MainWindow()
@@ -28,6 +28,8 @@ public partial class MainWindow : Window
             dataSource.Storage[0] = faker.Generate();
             await Task.Delay(4000);
             dataSource.Storage.Add(faker.Generate());
+            await Task.Delay(4000);
+            dataSource.Storage.Insert(1, faker.Generate());
         };
     }
 }
