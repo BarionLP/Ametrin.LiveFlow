@@ -1,8 +1,8 @@
 <Solution>
   <Project Path="Ametrin.LiveFlow.WPF/Ametrin.LiveFlow.WPF.csproj" />
-  <Project Path="i:/Coding/Packages/Ametrin.LiveFlow/Ametrin.LiveFlow.Benchmarks/Ametrin.LiveFlow.Benchmarks.csproj" />
-  <Project Path="i:/Coding/Packages/Ametrin.LiveFlow/Ametrin.LiveFlow.Sample/Ametrin.LiveFlow.Sample.csproj" />
-  <Project Path="i:/Coding/Packages/Ametrin.LiveFlow/Ametrin.LiveFlow.Test/Ametrin.LiveFlow.Test.csproj" />
-  <Project Path="i:/Coding/Packages/Ametrin.LiveFlow/Ametrin.LiveFlow.WpfSample/Ametrin.LiveFlow.WpfSample.csproj" />
-  <Project Path="i:/Coding/Packages/Ametrin.LiveFlow/Ametrin.LiveFlow/Ametrin.LiveFlow.csproj" />
+  <Project Path="Ametrin.LiveFlow.Benchmarks/Ametrin.LiveFlow.Benchmarks.csproj" />
+  <Project Path="Ametrin.LiveFlow.Sample/Ametrin.LiveFlow.Sample.csproj" />
+  <Project Path="Ametrin.LiveFlow.Test/Ametrin.LiveFlow.Test.csproj" />
+  <Project Path="Ametrin.LiveFlow.WpfSample/Ametrin.LiveFlow.WpfSample.csproj" />
+  <Project Path="Ametrin.LiveFlow/Ametrin.LiveFlow.csproj" />
 </Solution>
