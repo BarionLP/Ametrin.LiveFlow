@@ -23,7 +23,14 @@ public static class PagedCacheCollectionView
             PropertyInfoSource.FirstElement => firstElement.Map(static obj => TypeDescriptor.GetProperties(obj!).Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc))).Or(static () => []),
             _ => throw new UnreachableException(),
         };
-        return new PagedCacheCollectionView<T>(cache, count.OrThrow(), new([.. properties]));
+
+        T loadingItem = firstElement.OrThrow() switch
+        {
+            ExpandoObject obj => (T)(object)obj.Aggregate(new ExpandoObject(), static (l, pair) => { ((IDictionary<string, object?>) l)[pair.Key] = pair.Value; return l; }),
+            _ => Activator.CreateInstance<T>(),
+        };
+
+        return new PagedCacheCollectionView<T>(cache, count.OrThrow(), new([.. properties]), loadingItem);
     }
 }
 
@@ -32,17 +39,19 @@ public enum PropertyInfoSource { None, Type, FirstElement }
 public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IItemProperties
 {
     private readonly PagedCache<T> cache;
+    private readonly T loadingItem;
 
     /// <summary>
     /// create with <see cref="PagedCacheCollectionView.CreateAsync{T}(PagedCache{T})"/>
     /// </summary>
     /// <param name="cache"></param>
     /// <param name="count"></param>
-    internal PagedCacheCollectionView(PagedCache<T> cache, int count, ReadOnlyCollection<ItemPropertyInfo> itemProperties)
+    internal PagedCacheCollectionView(PagedCache<T> cache, int count, ReadOnlyCollection<ItemPropertyInfo> itemProperties, T loadingItem)
     {
         this.cache = cache;
         Count = count;
         ItemProperties = itemProperties;
+        this.loadingItem = loadingItem;
         cache.CacheChanged += OnCacheChanged;
     }
 
@@ -71,10 +80,9 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
                 return value;
             }
 
-            var temp = Activator.CreateInstance<T>();
-            _ = LoadAsyncAndNotify(index, temp);
+            _ = LoadAsyncAndNotify(index, loadingItem);
 
-            return temp;
+            return loadingItem;
         } 
         set => throw new NotSupportedException(); 
     }
