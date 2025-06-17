@@ -13,7 +13,7 @@ public sealed class PagedCache<T> : IDisposable
     internal readonly Stack<T[]> PagePool;
     private readonly ReaderWriterLockSlim @lock = new(LockRecursionPolicy.SupportsRecursion);
 
-    public event NotifyCollectionChangedEventHandler? CacheChanged;
+    public event NotifyCollectionChangedEventHandler? SourceChanged;
 
     public PagedCacheConfig Config { get; }
 
@@ -49,7 +49,7 @@ public sealed class PagedCache<T> : IDisposable
                         if (offset >= page.Size) throw new InvalidOperationException($"{dataSource.GetType().Name} tried to replace an element outside of the known range");
                         page.Buffer[offset] = newElement;
                         // no need to propagate on cache miss because count does not change
-                        CacheChanged?.Invoke(this, e);
+                        SourceChanged?.Invoke(this, e);
                     }
                 }
                 break;
@@ -71,7 +71,7 @@ public sealed class PagedCache<T> : IDisposable
                         @lock.ExitWriteLock();
                     }
                     // propagate on cache miss because we need to update the CollectionViews count
-                    CacheChanged?.Invoke(this, e);
+                    SourceChanged?.Invoke(this, e);
                 }
                 break;
 
@@ -80,7 +80,7 @@ public sealed class PagedCache<T> : IDisposable
             case NotifyCollectionChangedAction.Move:
             default:
                 ClearCache();
-                CacheChanged?.Invoke(this, new(NotifyCollectionChangedAction.Reset));
+                SourceChanged?.Invoke(this, new(NotifyCollectionChangedAction.Reset));
                 break;
         }
     }

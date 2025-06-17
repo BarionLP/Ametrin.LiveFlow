@@ -19,8 +19,8 @@ public static class PagedCacheCollectionView
         {
             PropertyInfoSource.None => [],
             PropertyInfoSource.Type => TypeDescriptor.GetProperties(typeof(T)).Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc)),
-            PropertyInfoSource.FirstElement when typeof(T) == typeof(ExpandoObject) => firstElement.Require<IDictionary<string, object?>>().Map(static obj => obj.Select(static pair => new ItemPropertyInfo(pair.Key, pair.Value?.GetType(), null))).Or(static () => []),
-            PropertyInfoSource.FirstElement => firstElement.Map(static obj => TypeDescriptor.GetProperties(obj!).Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc))).Or(static () => []),
+            PropertyInfoSource.FirstElement when typeof(T) == typeof(ExpandoObject) => firstElement.Require<IDictionary<string, object?>>().Map(static obj => obj.Select(static pair => new ItemPropertyInfo(pair.Key, pair.Value?.GetType(), null))).Or(static e => []),
+            PropertyInfoSource.FirstElement => firstElement.Map(static obj => TypeDescriptor.GetProperties(obj!).Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc))).Or(static e => []),
             _ => throw new UnreachableException(),
         };
 
@@ -69,7 +69,7 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
         Count = count;
         ItemProperties = itemProperties;
         this.loadingItem = loadingItem;
-        cache.CacheChanged += OnCacheChanged;
+        cache.SourceChanged += OnCacheChanged;
     }
 
     public T this[int index]
@@ -162,7 +162,7 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
 
     public void Dispose()
     {
-        cache.CacheChanged -= OnCacheChanged;
+        cache.SourceChanged -= OnCacheChanged;
     }
 
 

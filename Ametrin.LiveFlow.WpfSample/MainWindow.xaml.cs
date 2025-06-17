@@ -16,7 +16,7 @@ public partial class MainWindow : Window
     private static readonly FakeDataSource<User> dataSource = new([.. faker.GenerateLazy(10_000_000)], new() { MaxConcurrentConnections = 1, Delay = TimeSpan.FromMilliseconds(1000) });
 
     private readonly PagedCache<User> cache;
-    private PagedCacheCollectionView<User> view;
+    private PagedCacheCollectionView<User> view = default!;
     public MainWindow()
     {
         cache = new(dataSource, new() { PageSize = 96 });
