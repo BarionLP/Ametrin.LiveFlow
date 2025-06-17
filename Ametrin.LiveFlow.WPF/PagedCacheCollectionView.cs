@@ -12,7 +12,7 @@ public static class PagedCacheCollectionView
 {
     public static async Task<PagedCacheCollectionView<T>> CreateAsync<T>(PagedCache<T> cache, PropertyInfoSource propertyInfoSource = PropertyInfoSource.Type)
     {
-        var count = await cache.TryGetSourceCountAsync();
+        var count = (await cache.TryGetSourceCountAsync()).OrThrow(); // data sources without count are not yet supported
         // make sure first page is cached so it can be displayed instantly (and useful for column generation)
         var firstElement = await cache.TryGetValueAsync(0);
         var properties = propertyInfoSource switch
@@ -30,19 +30,36 @@ public static class PagedCacheCollectionView
             _ => Activator.CreateInstance<T>(),
         };
 
-        return new PagedCacheCollectionView<T>(cache, count.OrThrow(), new([.. properties]), loadingItem);
+        return new PagedCacheCollectionView<T>(cache, count, new([.. properties]), loadingItem);
     }
 }
 
-public enum PropertyInfoSource { None, Type, FirstElement }
-
-public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IItemProperties
+/// <summary>
+/// bind to DataGrid with <see cref="PagedCacheExtensions.BindToDataGridAsync{T}(PagedCache{T}, System.Windows.Controls.DataGrid, PropertyInfoSource)"/><br/>
+/// create with <see cref="PagedCacheCollectionView.CreateAsync{T}(PagedCache{T}, PropertyInfoSource)"/>
+/// </summary>
+/// <typeparam name="T"></typeparam>
+public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IItemProperties, IDisposable
 {
     private readonly PagedCache<T> cache;
     private readonly T loadingItem;
 
+    public int Count { get; private set; }
+    public bool IsReadOnly => true;
+    public bool CanFilter => false;
+    public bool CanGroup => false;
+    public bool CanSort => false;
+    public object? CurrentItem => this[CurrentPosition];
+    public int CurrentPosition { get; private set; } = 0;
+    public bool IsEmpty => false;
+    public CultureInfo Culture { get; set; } = CultureInfo.CurrentCulture;
+    public ReadOnlyCollection<ItemPropertyInfo> ItemProperties { get; }
+
+    public event EventHandler? CurrentChanged;
+    public event CurrentChangingEventHandler? CurrentChanging;
+    public event NotifyCollectionChangedEventHandler? CollectionChanged;
+
     /// <summary>
-    /// create with <see cref="PagedCacheCollectionView.CreateAsync{T}(PagedCache{T})"/>
     /// </summary>
     /// <param name="cache"></param>
     /// <param name="count"></param>
@@ -55,13 +72,9 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
         cache.CacheChanged += OnCacheChanged;
     }
 
-    public int Count { get; private set; }
-    public bool IsReadOnly => true;
-    public bool CanFilter => false;
-    public bool CanGroup => false;
-    public bool CanSort => false;
-    public T this[int index] { 
-        get 
+    public T this[int index]
+    {
+        get
         {
             if (index == -1) return default!;
 
@@ -83,17 +96,9 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
             _ = LoadAsyncAndNotify(index, loadingItem);
 
             return loadingItem;
-        } 
-        set => throw new NotSupportedException(); 
+        }
+        set => throw new NotSupportedException();
     }
-    public object? CurrentItem => this[CurrentPosition];
-    public int CurrentPosition { get; private set; } = 0;
-    public bool IsEmpty => false;
-    public CultureInfo Culture { get; set; } = CultureInfo.CurrentCulture;
-
-    public event EventHandler? CurrentChanged;
-    public event CurrentChangingEventHandler? CurrentChanging;
-    public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
     private async Task LoadAsyncAndNotify(int index, T tempObj)
     {
@@ -154,7 +159,11 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
         CollectionChanged?.Invoke(this, e);
     }
 
-    public ReadOnlyCollection<ItemPropertyInfo> ItemProperties { get; }
+
+    public void Dispose()
+    {
+        cache.CacheChanged -= OnCacheChanged;
+    }
 
 
     public IEnumerable SourceCollection { get { for (var i = 0; i < cache.Config.PageSize; i++) yield return cache.TryGetValueFromCache(i).Or(default!); } }
@@ -179,7 +188,6 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
     bool ICollection<T>.Contains(T item) => throw new NotSupportedException();
     void ICollection<T>.CopyTo(T[] array, int arrayIndex) => throw new NotSupportedException();
     bool ICollection<T>.Remove(T item) => throw new NotSupportedException();
-
 
     private readonly struct DeferredRefresh : IDisposable
     {

@@ -3,11 +3,14 @@ using System.Collections.Specialized;
 
 namespace Ametrin.LiveFlow;
 
+/// <summary>
+/// In Memory implementation for <see cref="IPageableDataSource{T}"/> (supports <see cref="INotifyCollectionChanged"/>)
+/// </summary>
+/// <typeparam name="T"></typeparam>
+/// <param name="storage"></param>
 public sealed class MemoryDataSource<T>(ObservableCollection<T> storage) : IPageableDataSource<T>, INotifyCollectionChanged
 {
-
     public ObservableCollection<T> Storage { get; } = storage;
-    public int MaxConcurrentConnections => int.MaxValue;
 
     public event NotifyCollectionChangedEventHandler? CollectionChanged { add => Storage.CollectionChanged += value; remove => Storage.CollectionChanged -= value; }
 

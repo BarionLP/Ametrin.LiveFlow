@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private static readonly FakeDataSource<User> dataSource = new([.. faker.GenerateLazy(10_000_000)], new() { MaxConcurrentConnections = 1, Delay = TimeSpan.FromMilliseconds(1000) });
 
     private readonly PagedCache<User> cache;
+    private PagedCacheCollectionView<User> view;
     public MainWindow()
     {
         cache = new(dataSource, new() { PageSize = 96 });
@@ -23,13 +24,19 @@ public partial class MainWindow : Window
 
         Loaded += async (sender, args) =>
         {
-            await cache.BindToDataGridAsync(TestDataGrid);
+            view = await cache.BindToDataGridAsync(TestDataGrid);
             await Task.Delay(4000);
             dataSource.Storage[0] = faker.Generate();
             await Task.Delay(4000);
             dataSource.Storage.Add(faker.Generate());
             await Task.Delay(4000);
             dataSource.Storage.Insert(1, faker.Generate());
+        };
+
+        Closed += (sender, args) =>
+        {
+            cache.Dispose();
+            view.Dispose();
         };
     }
 }

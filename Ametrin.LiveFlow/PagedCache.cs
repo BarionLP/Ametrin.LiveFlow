@@ -5,13 +5,13 @@ using System.Threading;
 
 namespace Ametrin.LiveFlow;
 
-public sealed class PagedCache<T>
+public sealed class PagedCache<T> : IDisposable
 {
     private readonly IPageableDataSource<T> dataSource;
     internal readonly Dictionary<int, Page> Cache;
     internal readonly LRUSet RequestHistory;
     internal readonly Stack<T[]> PagePool;
-    private readonly Lock @lock = new();
+    private readonly ReaderWriterLockSlim @lock = new(LockRecursionPolicy.SupportsRecursion);
 
     public event NotifyCollectionChangedEventHandler? CacheChanged;
 
@@ -24,7 +24,6 @@ public sealed class PagedCache<T>
         RequestHistory = new(capacity: config.MaxPagesInCache);
         PagePool = new(capacity: config.MaxPagesInCache);
         Config = config;
-        readingSourceSemaphore = new(dataSource.MaxConcurrentConnections);
 
         if (dataSource is INotifyCollectionChanged notifyChanged)
         {
@@ -47,7 +46,7 @@ public sealed class PagedCache<T>
 
                     if (Cache.TryGetValue(pageNumber, out var page))
                     {
-                        if (offset >= page.Size) throw new UnreachableException();
+                        if (offset >= page.Size) throw new InvalidOperationException($"{dataSource.GetType().Name} tried to replace an element outside of the known range");
                         page.Buffer[offset] = newElement;
                         // no need to propagate on cache miss because count does not change
                         CacheChanged?.Invoke(this, e);
@@ -66,11 +65,13 @@ public sealed class PagedCache<T>
                     if (Cache.TryGetValue(pageNumber, out var page))
                     {
                         if (offset != page.Size) goto default; // we can't insert without rebuilding the cache
+                        @lock.EnterWriteLock();
                         page.Buffer[offset] = newElement;
                         Cache[pageNumber] = page with { Size = page.Size + 1 };
+                        @lock.ExitWriteLock();
                     }
                     // propagate on cache miss because we need to update the CollectionViews count
-                    CacheChanged?.Invoke(this, e); 
+                    CacheChanged?.Invoke(this, e);
                 }
                 break;
 
@@ -84,31 +85,39 @@ public sealed class PagedCache<T>
         }
     }
 
-    public async Task<Option<T>> TryGetValueAsync(int index)
+    public async Task<Result<T>> TryGetValueAsync(int index)
     {
+        @lock.EnterReadLock();
         var (pageNumber, offset) = GetPageNumberAndItemOffset(index);
-
         if (!Cache.TryGetValue(pageNumber, out var page))
         {
-            if (!OptionsMarshall.IsSuccess(await LoadPageAsnyc(pageNumber)))
+            @lock.ExitReadLock();
+            if (OptionsMarshall.TryGetError(await LoadPageAsnyc(pageNumber), out var error))
             {
-                return Option.Error<T>();
+                return error;
             }
+            @lock.EnterReadLock();
             page = Cache[pageNumber];
         }
 
-        if (offset >= page.Size)
+        try
         {
-            return Option.Error<T>();
-        }
+            if (offset >= page.Size)
+            {
+                return new IndexOutOfRangeException();
+            }
 
-        RequestHistory.Add(pageNumber);
-        return Option.Success(page.Buffer[offset]);
+            RequestHistory.Add(pageNumber);
+            return page.Buffer[offset];
+        }
+        finally
+        {
+            @lock.ExitReadLock();
+        }
     }
 
     private readonly ConcurrentDictionary<int, Task<ErrorState>> _activeRequests = [];
     private readonly Lock startingPageLoadLock = new();
-    private readonly SemaphoreSlim readingSourceSemaphore;
     private async Task<ErrorState> LoadPageAsnyc(int pageNumber)
     {
         startingPageLoadLock.Enter();
@@ -132,38 +141,34 @@ public sealed class PagedCache<T>
 
         async Task<ErrorState> Impl()
         {
-            try
+            @lock.EnterWriteLock();
+            if (Cache.Count >= Config.MaxPagesInCache)
             {
-                await readingSourceSemaphore.WaitAsync();
-                Debug.Assert(!Cache.ContainsKey(pageNumber));
-                if (Cache.Count >= Config.MaxPagesInCache)
-                {
-                    var leastRecentPageNumber = RequestHistory.PopLeastRecent();
-                    PagePool.Push(Cache[leastRecentPageNumber].Buffer);
-                    Cache.Remove(leastRecentPageNumber);
-                }
-
-                if (!PagePool.TryPop(out var buffer))
-                {
-                    buffer = new T[Config.PageSize];
-                }
-
-                var pageStartIndex = pageNumber * Config.PageSize;
-                var result = await dataSource.TryGetPageAsync(pageStartIndex, buffer);
-
-                if (!OptionsMarshall.TryGetValue(result, out var elementsRead))
-                {
-                    PagePool.Push(buffer);
-                    return OptionsMarshall.GetError(result);
-                }
-
-                Cache[pageNumber] = new(buffer, elementsRead);
-                return default;
+                var leastRecentPageNumber = RequestHistory.PopLeastRecent();
+                PagePool.Push(Cache[leastRecentPageNumber].Buffer);
+                Cache.Remove(leastRecentPageNumber);
             }
-            finally
+            @lock.ExitWriteLock();
+
+            if (!PagePool.TryPop(out var buffer))
             {
-                readingSourceSemaphore.Release();
+                buffer = new T[Config.PageSize];
             }
+
+            var pageStartIndex = pageNumber * Config.PageSize;
+            var result = await dataSource.TryGetPageAsync(pageStartIndex, buffer);
+
+            if (!OptionsMarshall.TryGetValue(result, out var elementsRead))
+            {
+                PagePool.Push(buffer);
+                return OptionsMarshall.GetError(result);
+            }
+
+            @lock.EnterWriteLock();
+            Debug.Assert(!Cache.ContainsKey(pageNumber));
+            Cache[pageNumber] = new(buffer, elementsRead);
+            @lock.ExitWriteLock();
+            return default;
         }
     }
 
@@ -171,52 +176,86 @@ public sealed class PagedCache<T>
     {
         var (pageNumber, offset) = GetPageNumberAndItemOffset(index);
 
-        if (Cache.TryGetValue(pageNumber, out var page))
+        @lock.EnterReadLock();
+        try
         {
-            if (offset >= page.Size) return Option.Error<T>();
+            if (!Cache.TryGetValue(pageNumber, out var page))
+            {
+                return Option.Error<T>();
+            }
+
+            if (offset >= page.Size)
+            {
+                return Option.Error<T>();
+            }
+
             RequestHistory.Add(pageNumber);
             return Option.Success(page.Buffer[offset]);
         }
-
-        return Option.Error<T>();
+        finally
+        {
+            @lock.ExitReadLock();
+        }
     }
 
     public bool IsInCache(int index)
     {
         var (pageNumber, itemOffset) = GetPageNumberAndItemOffset(index);
-        return Cache.TryGetValue(pageNumber, out var page) && itemOffset < page.Size;
+        @lock.EnterReadLock();
+        var result = Cache.TryGetValue(pageNumber, out var page) && itemOffset < page.Size;
+        @lock.ExitReadLock();
+        return result;
     }
 
     public bool IsInCache(T element)
     {
-        using var scope = @lock.EnterScope();
-        foreach (var (_, page) in Cache)
+        @lock.EnterReadLock();
+        try
         {
-            var index = Array.IndexOf(page.Buffer, element);
-
-            if (index >= 0 && index < page.Size)
+            foreach (var (_, page) in Cache)
             {
-                return true;
-            }
-        }
+                var index = Array.IndexOf(page.Buffer, element);
 
-        return false;
+                if (index >= 0 && index < page.Size)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            @lock.ExitReadLock();
+        }
     }
 
     public Task<Option<int>> TryGetSourceCountAsync() => dataSource.TryGetItemCountAsync();
 
     public void ClearCache()
     {
-        using var scope = @lock.EnterScope();
+        @lock.EnterWriteLock();
         foreach (var (_, page) in Cache)
         {
             PagePool.Push(page.Buffer);
         }
         Cache.Clear();
         RequestHistory.Clear();
+        @lock.ExitWriteLock();
     }
 
     private (int pageNumber, int itemOffset) GetPageNumberAndItemOffset(int index) => (index / Config.PageSize, index % Config.PageSize);
+
+    public void Dispose()
+    {
+        ClearCache();
+        PagePool.Clear();
+        if (dataSource is INotifyCollectionChanged notifyChanged)
+        {
+            notifyChanged.CollectionChanged -= OnSourceChanged;
+        }
+        @lock.Dispose();
+    }
 
     internal readonly record struct Page(T[] Buffer, int Size);
 

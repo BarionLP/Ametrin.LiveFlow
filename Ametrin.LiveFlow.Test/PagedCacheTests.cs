@@ -1,6 +1,6 @@
-using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using Ametrin.Optional.Testing.TUnit;
+using TUnit.Assertions.AssertConditions.Throws;
 
 namespace Ametrin.LiveFlow.Test;
 
@@ -55,6 +55,8 @@ public sealed class PagedCacheTests
         await Assert.That(cache.RequestHistory.GetLeastRecent()).IsEqualTo(1);
         await Assert.That(cache.TryGetValueFromCache(0)).IsError();
         await Assert.That(cache.PagePool.Count).IsEqualTo(0);
+
+        await Assert.That(cache.Dispose).ThrowsNothing();
     }
 
     [Test]
@@ -75,5 +77,7 @@ public sealed class PagedCacheTests
         await Assert.That(task2).IsSuccess(data[PAGE_SIZE]);
         await Assert.That(task3).IsSuccess(data[PAGE_SIZE + 1]);
         await Assert.That(task4).IsSuccess(data[PAGE_SIZE * 2]);
+
+        await Assert.That(cache.Dispose).ThrowsNothing();
     }
 }

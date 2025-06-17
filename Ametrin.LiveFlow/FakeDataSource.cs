@@ -1,27 +1,32 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Threading;
 
 namespace Ametrin.LiveFlow;
 
+/// <summary>
+/// simulates real data base connections
+/// </summary>
+/// <typeparam name="T"></typeparam>
+/// <param name="storage">the underlying data source</param>
+/// <param name="config"></param>
 public sealed class FakeDataSource<T>(ObservableCollection<T> storage, FakeDataSourceConfig config) : IPageableDataSource<T>, INotifyCollectionChanged
 {
     public ObservableCollection<T> Storage { get; } = storage;
     public FakeDataSourceConfig Config { get; } = config;
-    public int MaxConcurrentConnections => Config.MaxConcurrentConnections;
 
     public event NotifyCollectionChangedEventHandler? CollectionChanged { add => Storage.CollectionChanged += value; remove => Storage.CollectionChanged -= value; }
 
-    private volatile int threadsReading = 0;
+    private readonly SemaphoreSlim semaphore = new(config.MaxConcurrentConnections);
     public async Task<Result<int>> TryGetPageAsync(int startIndex, T[] buffer)
     {
-        if (threadsReading >= MaxConcurrentConnections) throw new InvalidOperationException($"Cannot read from more than {MaxConcurrentConnections} streams");
-        threadsReading++;
         if (startIndex >= Storage.Count || startIndex < 0)
         {
             return new IndexOutOfRangeException();
         }
         var length = int.Min(buffer.Length, Storage.Count - startIndex);
 
+        await semaphore.WaitAsync();
         await Task.Delay(Config.Delay);
 
         for (var i = 0; i < length; i++)
@@ -29,7 +34,7 @@ public sealed class FakeDataSource<T>(ObservableCollection<T> storage, FakeDataS
             buffer[i] = Storage[startIndex + i];
         }
 
-        threadsReading--;
+        semaphore.Release();
         return Result.Success(length);
     }
 

@@ -39,5 +39,4 @@ public static class PagedCacheExtensions
     }
 
     internal static DependencyObject? GetChild(this DependencyObject child, int index) => VisualTreeHelper.GetChild(child, index);
-
 }
