@@ -1,7 +1,7 @@
 # Ametrin.LiveFlow
 
 Ametrin.LiveFlow is a high-performance .NET library for efficiently managing and displaying large collections of data.  
-It provides a smart caching mechanism that optimizes memory usage while ensuring smooth data access
+It provides a smart caching mechanism that optimizes memory usage while ensuring smooth data access and realtime updates.
 
 ## Features
 
