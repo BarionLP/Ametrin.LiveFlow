@@ -6,7 +6,7 @@ namespace Ametrin.LiveFlow.WPF;
 
 public static class PagedCacheExtensions
 {
-    public static async Task<PagedCacheCollectionView<T>> BindToDataGridAsync<T>(this PagedCache<T> cache, DataGrid dataGrid, PropertyInfoSource infoSource = PropertyInfoSource.Type)
+    public static async Task<PagedCacheCollectionView<T>> BindToDataGridAsync<T>(this PagedCache<T> cache, DataGrid dataGrid, PropertyInfoSource infoSource = PropertyInfoSource.Type, T? loadingItem = default, bool disposeCache = false)
     {
         ArgumentNullException.ThrowIfNull(dataGrid);
         if(!dataGrid.EnableRowVirtualization) throw new ArgumentException("DataGrid needs EnableRowVirtualization=\"True\"", nameof(dataGrid));
@@ -14,7 +14,7 @@ public static class PagedCacheExtensions
         if(VirtualizingPanel.GetScrollUnit(panel) is not ScrollUnit.Item) throw new ArgumentException("DataGrid needs VirtualizingPanel.ScrollUnit=\"Item\"");
         if(!VirtualizingPanel.GetIsVirtualizing(panel)) throw new ArgumentException("DataGrid needs VirtualizingPanel.IsVirtualizing=\"True\"");
 
-        var view = await PagedCacheCollectionView.CreateAsync(cache, infoSource);
+        var view = await PagedCacheCollectionView.CreateAsync(cache, infoSource, loadingItem, disposeCache);
         dataGrid.ItemsSource = view;
         view.Refresh();
         return view;

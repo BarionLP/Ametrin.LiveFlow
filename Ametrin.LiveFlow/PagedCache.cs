@@ -254,6 +254,10 @@ public sealed class PagedCache<T> : IDisposable
         {
             notifyChanged.CollectionChanged -= OnSourceChanged;
         }
+        if(Config.DisposeDataSource && dataSource is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
         @lock.Dispose();
     }
 
@@ -292,4 +296,5 @@ public sealed class PagedCacheConfig
 {
     public int PageSize { get; init; } = 128;
     public int MaxPagesInCache { get; init; } = 8;
+    public bool DisposeDataSource { get; init; } = false;
 }

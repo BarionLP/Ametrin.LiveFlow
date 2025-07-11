@@ -10,39 +10,38 @@ namespace Ametrin.LiveFlow.WPF;
 
 public static class PagedCacheCollectionView
 {
-    public static async Task<PagedCacheCollectionView<T>> CreateAsync<T>(PagedCache<T> cache, PropertyInfoSource propertyInfoSource = PropertyInfoSource.Type)
+    public static async Task<PagedCacheCollectionView<T>> CreateAsync<T>(PagedCache<T> cache, PropertyInfoSource propertyInfoSource = PropertyInfoSource.Type, T? loadingItem = default, bool disposeCache = false)
     {
         var count = (await cache.TryGetSourceCountAsync()).OrThrow(); // data sources without count are not yet supported
         // make sure first page is cached so it can be displayed instantly (and useful for column generation)
-        var firstElement = await cache.TryGetValueAsync(0);
+        var firstElement = (await cache.TryGetValueAsync(0)).ToOption();
         var properties = propertyInfoSource switch
         {
             PropertyInfoSource.None => [],
             PropertyInfoSource.Type => TypeDescriptor.GetProperties(typeof(T)).Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc)),
-            PropertyInfoSource.FirstElement when typeof(T) == typeof(ExpandoObject) => firstElement.Require<IDictionary<string, object?>>().Map(static obj => obj.Select(static pair => new ItemPropertyInfo(pair.Key, pair.Value?.GetType(), null))).Or(static e => []),
-            PropertyInfoSource.FirstElement => firstElement.Map(static obj => TypeDescriptor.GetProperties(obj!).Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc))).Or(static e => []),
+            PropertyInfoSource.FirstElement when typeof(T) == typeof(ExpandoObject) => firstElement.Require<IDictionary<string, object?>>().Map(static obj => obj.Select(static pair => new ItemPropertyInfo(pair.Key, pair.Value?.GetType(), null))).Or(static () => []),
+            PropertyInfoSource.FirstElement => firstElement.Map(static obj => TypeDescriptor.GetProperties(obj!).Cast<PropertyDescriptor>().Select(desc => new ItemPropertyInfo(desc.Name, desc.PropertyType, desc))).Or(static () => []),
             _ => throw new UnreachableException(),
         };
 
-        T loadingItem = firstElement.OrThrow() switch
-        {
-            ExpandoObject obj => (T)(object)obj.Aggregate(new ExpandoObject(), static (l, pair) => { ((IDictionary<string, object?>) l)[pair.Key] = pair.Value; return l; }),
-            _ => Activator.CreateInstance<T>(),
-        };
+        loadingItem ??= firstElement.Require<ExpandoObject>()
+                .Map(obj => (T)(object)obj.Aggregate(new ExpandoObject(), static (l, pair) => { ((IDictionary<string, object?>)l)[pair.Key] = pair.Value; return l; }))
+                .Or(static () => Activator.CreateInstance<T>());
 
-        return new PagedCacheCollectionView<T>(cache, count, new([.. properties]), loadingItem);
+        return new PagedCacheCollectionView<T>(cache, count, new([.. properties]), loadingItem, disposeCache);
     }
 }
 
 /// <summary>
 /// bind to DataGrid with <see cref="PagedCacheExtensions.BindToDataGridAsync{T}(PagedCache{T}, System.Windows.Controls.DataGrid, PropertyInfoSource)"/><br/>
-/// create with <see cref="PagedCacheCollectionView.CreateAsync{T}(PagedCache{T}, PropertyInfoSource)"/>
+/// create with <see cref="PagedCacheCollectionView.CreateAsync{T}(PagedCache{T}, PropertyInfoSource, T?)"/>
 /// </summary>
 /// <typeparam name="T"></typeparam>
 public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IItemProperties, IDisposable
 {
     private readonly PagedCache<T> cache;
     private readonly T loadingItem;
+    private readonly bool disposeCache;
 
     public int Count { get; private set; }
     public bool IsReadOnly => true;
@@ -63,12 +62,13 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
     /// </summary>
     /// <param name="cache"></param>
     /// <param name="count"></param>
-    internal PagedCacheCollectionView(PagedCache<T> cache, int count, ReadOnlyCollection<ItemPropertyInfo> itemProperties, T loadingItem)
+    internal PagedCacheCollectionView(PagedCache<T> cache, int count, ReadOnlyCollection<ItemPropertyInfo> itemProperties, T loadingItem, bool disposeCache = false)
     {
         this.cache = cache;
         Count = count;
         ItemProperties = itemProperties;
         this.loadingItem = loadingItem;
+        this.disposeCache = disposeCache;
         cache.SourceChanged += OnCacheChanged;
     }
 
@@ -163,6 +163,10 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
     public void Dispose()
     {
         cache.SourceChanged -= OnCacheChanged;
+        if (disposeCache)
+        {
+            cache.Dispose();
+        }
     }
 
 
