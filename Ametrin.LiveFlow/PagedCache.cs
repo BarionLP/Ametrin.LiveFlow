@@ -135,9 +135,18 @@ public sealed class PagedCache<T> : IDisposable
         task = Impl();
         _activeRequests[pageNumber] = task;
         startingPageLoadLock.Exit();
-        var result = await task;
-        _activeRequests.Remove(pageNumber, out _);
-        return result;
+        try
+        {
+            return await task;
+        }
+        catch(Exception e)
+        {
+            return e;
+        }
+        finally
+        {
+            _activeRequests.Remove(pageNumber, out _);
+        }
 
         async Task<ErrorState> Impl()
         {

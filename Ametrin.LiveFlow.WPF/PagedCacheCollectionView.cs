@@ -39,10 +39,10 @@ public static class PagedCacheCollectionView
 /// <typeparam name="T"></typeparam>
 public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IItemProperties, IDisposable
 {
-    private readonly PagedCache<T> cache;
     private readonly T loadingItem;
     private readonly bool disposeCache;
 
+    public PagedCache<T> Cache { get; }
     public int Count { get; private set; }
     public bool IsReadOnly => true;
     public bool CanFilter => false;
@@ -64,7 +64,7 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
     /// <param name="count"></param>
     internal PagedCacheCollectionView(PagedCache<T> cache, int count, ReadOnlyCollection<ItemPropertyInfo> itemProperties, T loadingItem, bool disposeCache = false)
     {
-        this.cache = cache;
+        Cache = cache;
         Count = count;
         ItemProperties = itemProperties;
         this.loadingItem = loadingItem;
@@ -78,16 +78,16 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
         {
             if (index == -1) return default!;
 
-            if (OptionsMarshall.TryGetValue(cache.TryGetValueFromCache(index), out var value))
+            if (OptionsMarshall.TryGetValue(Cache.TryGetValueFromCache(index), out var value))
             {
-                if (index > cache.Config.PageSize)
+                if (index > Cache.Config.PageSize)
                 {
-                    _ = cache.TryGetValueAsync(index - cache.Config.PageSize);
+                    _ = Cache.TryGetValueAsync(index - Cache.Config.PageSize);
                 }
 
-                if (index < Count - cache.Config.PageSize)
+                if (index < Count - Cache.Config.PageSize)
                 {
-                    _ = cache.TryGetValueAsync(index + cache.Config.PageSize);
+                    _ = Cache.TryGetValueAsync(index + Cache.Config.PageSize);
                 }
 
                 return value;
@@ -102,7 +102,7 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
 
     private async Task LoadAsyncAndNotify(int index, T tempObj)
     {
-        var item = (await cache.TryGetValueAsync(index)).OrThrow();
+        var item = (await Cache.TryGetValueAsync(index)).OrThrow();
         CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Replace, newItem: item, oldItem: tempObj, index));
     }
 
@@ -152,7 +152,7 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
 
             case NotifyCollectionChangedAction.Reset:
             default:
-                Count = (await cache.TryGetSourceCountAsync()).OrThrow();
+                Count = (await Cache.TryGetSourceCountAsync()).OrThrow();
                 break;
         }
 
@@ -162,22 +162,22 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
 
     public void Dispose()
     {
-        cache.SourceChanged -= OnCacheChanged;
+        Cache.SourceChanged -= OnCacheChanged;
         if (disposeCache)
         {
-            cache.Dispose();
+            Cache.Dispose();
         }
     }
 
 
-    public IEnumerable SourceCollection { get { for (var i = 0; i < cache.Config.PageSize; i++) yield return cache.TryGetValueFromCache(i).Or(default!); } }
+    public IEnumerable SourceCollection { get { for (var i = 0; i < Cache.Config.PageSize; i++) yield return Cache.TryGetValueFromCache(i).Or(default!); } }
     bool ICollectionView.IsCurrentAfterLast => throw new NotImplementedException();
     bool ICollectionView.IsCurrentBeforeFirst => throw new NotImplementedException();
     SortDescriptionCollection? ICollectionView.SortDescriptions => null;
     Predicate<object> ICollectionView.Filter { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
     ObservableCollection<GroupDescription>? ICollectionView.GroupDescriptions => null;
     ReadOnlyObservableCollection<object>? ICollectionView.Groups => null;
-    bool ICollectionView.Contains(object item) => item is T t && cache.IsInCache(t);
+    bool ICollectionView.Contains(object item) => item is T t && Cache.IsInCache(t);
     bool ICollectionView.MoveCurrentTo(object item) => throw new NotSupportedException();
     bool ICollectionView.MoveCurrentToLast() => throw new NotSupportedException();
     IDisposable ICollectionView.DeferRefresh() => new DeferredRefresh();
