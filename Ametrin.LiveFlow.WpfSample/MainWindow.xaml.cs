@@ -24,7 +24,7 @@ public partial class MainWindow : Window
 
         Loaded += async (sender, args) =>
         {
-            view = await cache.BindToDataGridAsync(TestDataGrid);
+            view = await cache.BindToTreeViewAsync(TestDataGrid);
             await Task.Delay(4000);
             dataSource.Storage[0] = faker.Generate();
             await Task.Delay(4000);
