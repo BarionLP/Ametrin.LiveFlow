@@ -92,7 +92,7 @@ public sealed class PagedCache<T> : IDisposable
         if (!Cache.TryGetValue(pageNumber, out var page))
         {
             @lock.ExitReadLock();
-            if (OptionsMarshall.TryGetError(await LoadPageAsnyc(pageNumber), out var error))
+            if (OptionsMarshall.TryGetError(await LoadPageAsync(pageNumber), out var error))
             {
                 return error;
             }
@@ -118,7 +118,7 @@ public sealed class PagedCache<T> : IDisposable
 
     private readonly ConcurrentDictionary<int, Task<ErrorState>> _activeRequests = [];
     private readonly Lock startingPageLoadLock = new();
-    private async Task<ErrorState> LoadPageAsnyc(int pageNumber)
+    private async Task<ErrorState> LoadPageAsync(int pageNumber)
     {
         startingPageLoadLock.Enter();
         if (Cache.ContainsKey(pageNumber))
@@ -200,6 +200,28 @@ public sealed class PagedCache<T> : IDisposable
 
             RequestHistory.Add(pageNumber);
             return Option.Success(page.Buffer[offset]);
+        }
+        finally
+        {
+            @lock.ExitReadLock();
+        }
+    }
+
+    public Option<T> TryGetFirstCachedValue()
+    {
+        @lock.EnterReadLock();
+
+        try
+        {
+            if(Cache.Count is 0)
+            {
+                return Option.Error<T>();
+            }
+
+            var pageNumber = Cache.Min(p => p.Key);
+            
+            // do not add this request to the history because it was not specifically for this page
+            return Option.Success(Cache[pageNumber].Buffer[0]);
         }
         finally
         {

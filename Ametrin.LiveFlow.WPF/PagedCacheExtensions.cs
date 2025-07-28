@@ -20,6 +20,19 @@ public static class PagedCacheExtensions
         return view;
     }
 
+    public static async Task<PagedCacheCollectionView<T>> BindToTreeViewAsync<T>(this PagedCache<T> cache, TreeView treeView, PropertyInfoSource infoSource = PropertyInfoSource.Type, T? loadingItem = default, bool disposeCache = false)
+    {
+        ArgumentNullException.ThrowIfNull(treeView);
+        var panel = treeView.FindChild<VirtualizingStackPanel>() ?? throw new NullReferenceException();
+        if(VirtualizingPanel.GetScrollUnit(panel) is not ScrollUnit.Item) throw new ArgumentException("TreeView needs VirtualizingPanel.ScrollUnit=\"Item\"");
+        if(!VirtualizingPanel.GetIsVirtualizing(panel)) throw new ArgumentException("TreeView needs VirtualizingPanel.IsVirtualizing=\"True\"");
+
+        var view = await PagedCacheCollectionView.CreateAsync(cache, infoSource, loadingItem, disposeCache);
+        treeView.ItemsSource = view;
+        view.Refresh();
+        return view;
+    }
+
     internal static T? FindChild<T>(this DependencyObject obj) where T : DependencyObject
     {
         var children = obj.EnumerateChildren();
