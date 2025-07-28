@@ -33,6 +33,7 @@ public sealed class PagedCache<T> : IDisposable
 
     private void OnSourceChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        UpdateEstimatedCount();
         switch (e.Action)
         {
             case NotifyCollectionChangedAction.Replace:
@@ -51,6 +52,7 @@ public sealed class PagedCache<T> : IDisposable
                         // no need to propagate on cache miss because count does not change
                         SourceChanged?.Invoke(this, e);
                     }
+
                 }
                 break;
 
@@ -82,6 +84,28 @@ public sealed class PagedCache<T> : IDisposable
                 ClearCache();
                 SourceChanged?.Invoke(this, new(NotifyCollectionChangedAction.Reset));
                 break;
+        }
+
+        void UpdateEstimatedCount()
+        {
+            if (Config.TrackItemCount is null or { IgnoreEvents: true }) return;
+
+            if (e.NewStartingIndex > estimatedCount)
+            {
+                estimatedCount = e.NewStartingIndex;
+            }
+
+            switch (e.Action)
+            {
+                case NotifyCollectionChangedAction.Add:
+                    Debug.Assert(e.OldItems is null or { Count: 0 });
+                    estimatedCount += e.NewItems!.Count;
+                    break;
+                case NotifyCollectionChangedAction.Remove:
+                    Debug.Assert(e.NewItems is null or { Count: 0 });
+                    estimatedCount -= e.OldItems!.Count;
+                    break;
+            }
         }
     }
 
@@ -139,7 +163,7 @@ public sealed class PagedCache<T> : IDisposable
         {
             return await task;
         }
-        catch(Exception e)
+        catch (Exception e)
         {
             return e;
         }
@@ -176,6 +200,11 @@ public sealed class PagedCache<T> : IDisposable
             @lock.EnterWriteLock();
             Debug.Assert(!Cache.ContainsKey(pageNumber));
             Cache[pageNumber] = new(buffer, elementsRead);
+            var minCount = pageNumber * Config.PageSize + elementsRead;
+            if (minCount > estimatedCount || elementsRead < Config.PageSize)
+            {
+                estimatedCount = minCount;
+            }
             @lock.ExitWriteLock();
             return default;
         }
@@ -239,7 +268,16 @@ public sealed class PagedCache<T> : IDisposable
         }
     }
 
-    public Task<Option<int>> TryGetSourceCountAsync() => dataSource.TryGetItemCountAsync();
+    private int estimatedCount;
+    public Task<Option<int>> TryGetSourceCountAsync()
+    {
+        if (Config.TrackItemCount is null)
+        {
+            return dataSource.TryGetItemCountAsync();
+        }
+
+        return Task.FromResult(Option.Success(estimatedCount));
+    }
 
     public void ClearCache()
     {
@@ -263,7 +301,7 @@ public sealed class PagedCache<T> : IDisposable
         {
             notifyChanged.CollectionChanged -= OnSourceChanged;
         }
-        if(Config.DisposeDataSource && dataSource is IDisposable disposable)
+        if (Config.DisposeDataSource && dataSource is IDisposable disposable)
         {
             disposable.Dispose();
         }
@@ -305,5 +343,18 @@ public sealed class PagedCacheConfig
 {
     public int PageSize { get; init; } = 128;
     public int MaxPagesInCache { get; init; } = 8;
+    /// <summary>
+    /// set this if your data source cannot provide a count or you want to discover the elements in the source
+    /// </summary>
+    public TrackItemCountConfig? TrackItemCount { get; init; } = null;
     public bool DisposeDataSource { get; init; } = false;
+
+    public sealed class TrackItemCountConfig
+    {
+        /// <summary>
+        /// enable this if you want to ignore update events in the count tracking.<para/>
+        /// this helps when a view tries to load all items from the source 
+        /// </summary>
+        public bool IgnoreEvents { get; init; } = false;
+    }
 }

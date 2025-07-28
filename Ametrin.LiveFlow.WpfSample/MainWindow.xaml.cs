@@ -19,7 +19,7 @@ public partial class MainWindow : Window
     private PagedCacheCollectionView<User> view = default!;
     public MainWindow()
     {
-        cache = new(dataSource, new() { PageSize = 96 });
+        cache = new(dataSource, new() { PageSize = 96, TrackItemCount = new(), });
         InitializeComponent();
 
         Loaded += async (sender, args) =>
