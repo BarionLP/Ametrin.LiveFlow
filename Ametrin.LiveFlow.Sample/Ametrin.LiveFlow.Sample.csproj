@@ -10,5 +10,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Ametrin.LiveFlow\Ametrin.LiveFlow.csproj" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="MongoDB.Driver" Version="3.4.2" />
+  </ItemGroup>
 
 </Project>
