@@ -181,6 +181,36 @@ public sealed class PagedCache<T> : IDisposable
         }
     }
 
+    public async Task<Result<IEnumerable<T>>> GetPageAsync(int pageNumber)
+    {
+        @lock.EnterReadLock();
+        try
+        {
+            if (Cache.TryGetValue(pageNumber, out var page))
+            {
+                return page.Buffer.Take(page.Size).ToResult();
+            }
+        }
+        finally
+        {
+            @lock.ExitReadLock();
+        }
+
+        var error = await LoadPageAsync(pageNumber);
+        if (OptionsMarshall.TryGetError(error, out var e)) return e;
+
+        @lock.EnterReadLock();
+        try
+        {
+            var page = Cache[pageNumber];
+            return page.Buffer.Take(page.Size).ToResult();
+        }
+        finally
+        {
+            @lock.ExitReadLock();
+        }
+    }
+
     public Option<T> TryGetValueFromCache(int index)
     {
         var (pageNumber, offset) = GetPageNumberAndItemOffset(index);
