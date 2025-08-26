@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Ametrin.Optional.Testing.TUnit" Version="0.2.4" />
+    <PackageReference Include="Ametrin.Optional.Testing.TUnit" Version="0.2.5" />
     <PackageReference Include="TUnit" Version="0.25.21" />
   </ItemGroup>
 
