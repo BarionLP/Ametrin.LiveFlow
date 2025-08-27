@@ -188,7 +188,7 @@ public sealed class PagedCache<T> : IDisposable
         {
             if (Cache.TryGetValue(pageNumber, out var page))
             {
-                return page.Buffer.Take(page.Size).ToResult();
+                return Result.Of(page.Buffer.Take(page.Size));
             }
         }
         finally
@@ -203,7 +203,7 @@ public sealed class PagedCache<T> : IDisposable
         try
         {
             var page = Cache[pageNumber];
-            return page.Buffer.Take(page.Size).ToResult();
+            return Result.Of(page.Buffer.Take(page.Size));
         }
         finally
         {
