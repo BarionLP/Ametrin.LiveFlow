@@ -10,7 +10,7 @@ public sealed class PagedCache<T> : IDisposable
     private readonly IPageableDataSource<T> dataSource;
     internal readonly Dictionary<int, Page> Cache;
     internal readonly LRUSet RequestHistory;
-    internal readonly Stack<T[]> PagePool;
+    internal readonly PagePoolWrapper PagePool;
     private readonly ReaderWriterLockSlim @lock = new(LockRecursionPolicy.SupportsRecursion);
 
     public event NotifyCollectionChangedEventHandler? SourceChanged;
@@ -22,7 +22,7 @@ public sealed class PagedCache<T> : IDisposable
         this.dataSource = dataSource;
         Cache = new(capacity: config.MaxPagesInCache);
         RequestHistory = new(capacity: config.MaxPagesInCache);
-        PagePool = new(capacity: config.MaxPagesInCache);
+        PagePool = new(config);
         Config = config;
 
         if (dataSource is INotifyCollectionChanged notifyChanged)
@@ -139,7 +139,7 @@ public sealed class PagedCache<T> : IDisposable
         {
             return await task;
         }
-        catch(Exception e)
+        catch (Exception e)
         {
             return e;
         }
@@ -150,26 +150,20 @@ public sealed class PagedCache<T> : IDisposable
 
         async Task<ErrorState> Impl()
         {
-            @lock.EnterWriteLock();
             if (Cache.Count >= Config.MaxPagesInCache)
             {
                 var leastRecentPageNumber = RequestHistory.PopLeastRecent();
-                PagePool.Push(Cache[leastRecentPageNumber].Buffer);
-                Cache.Remove(leastRecentPageNumber);
+                RemovePage(leastRecentPageNumber);
             }
-            @lock.ExitWriteLock();
 
-            if (!PagePool.TryPop(out var buffer))
-            {
-                buffer = new T[Config.PageSize];
-            }
+            var buffer = PagePool.GetOrCreateBuffer();
 
             var pageStartIndex = pageNumber * Config.PageSize;
             var result = await dataSource.TryGetPageAsync(pageStartIndex, buffer);
 
             if (!result.Branch(out var elementsRead, out var error))
             {
-                PagePool.Push(buffer);
+                PagePool.Return(buffer);
                 return error;
             }
 
@@ -242,13 +236,13 @@ public sealed class PagedCache<T> : IDisposable
 
         try
         {
-            if(Cache.Count is 0)
+            if (Cache.Count is 0)
             {
                 return Option.Error<T>();
             }
 
             var pageNumber = Cache.Min(p => p.Key);
-            
+
             // do not add this request to the history because it was not specifically for this page
             return Option.Success(Cache[pageNumber].Buffer[0]);
         }
@@ -297,11 +291,29 @@ public sealed class PagedCache<T> : IDisposable
         @lock.EnterWriteLock();
         foreach (var (_, page) in Cache)
         {
-            PagePool.Push(page.Buffer);
+            PagePool.Return(page.Buffer);
         }
         Cache.Clear();
         RequestHistory.Clear();
         @lock.ExitWriteLock();
+    }
+
+    private bool RemovePage(int pageNumber)
+    {
+        @lock.EnterWriteLock();
+        try
+        {
+            if (Cache.Remove(pageNumber, out var page))
+            {
+                PagePool.Return(page.Buffer);
+                return true;
+            }
+            return false;
+        }
+        finally
+        {
+            @lock.ExitWriteLock();
+        }
     }
 
     private (int pageNumber, int itemOffset) GetPageNumberAndItemOffset(int index) => (index / Config.PageSize, index % Config.PageSize);
@@ -314,7 +326,7 @@ public sealed class PagedCache<T> : IDisposable
         {
             notifyChanged.CollectionChanged -= OnSourceChanged;
         }
-        if(Config.DisposeDataSource && dataSource is IDisposable disposable)
+        if (Config.DisposeDataSource && dataSource is IDisposable disposable)
         {
             disposable.Dispose();
         }
@@ -349,6 +361,31 @@ public sealed class PagedCache<T> : IDisposable
         }
 
         public void Clear() => list.Clear();
+    }
+
+    internal readonly struct PagePoolWrapper(PagedCacheConfig config)
+    {
+        // assuming we won't always hit the max page number, this will make caches a little easier on memory
+        // TODO: when source sends no updates, ClearCache will probably never be called so this could be even lower
+        private readonly Stack<T[]> pool = new(capacity: config.MaxPagesInCache / 2);
+        private readonly PagedCacheConfig config = config;
+
+        public T[] GetOrCreateBuffer()
+        {
+            if (!pool.TryPop(out var buffer))
+            {
+                buffer = new T[config.PageSize];
+            }
+            return buffer;
+        }
+
+        public void Return(T[] buffer)
+        {
+            Debug.Assert(buffer.Length == config.PageSize);
+            Array.Clear(buffer);
+            pool.Push(buffer);
+        }
+        public void Clear() => pool.Clear();
     }
 }
 
