@@ -196,8 +196,7 @@ public sealed class PagedCache<T> : IDisposable
             @lock.ExitReadLock();
         }
 
-        var error = await LoadPageAsync(pageNumber);
-        if (OptionsMarshall.TryGetError(error, out var e)) return e;
+        if (!(await LoadPageAsync(pageNumber)).Branch(out var e)) return e;
 
         @lock.EnterReadLock();
         try
