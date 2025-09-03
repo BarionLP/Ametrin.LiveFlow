@@ -92,7 +92,7 @@ public sealed class PagedCache<T> : IDisposable
         if (!Cache.TryGetValue(pageNumber, out var page))
         {
             @lock.ExitReadLock();
-            if (OptionsMarshall.TryGetError(await LoadPageAsync(pageNumber), out var error))
+            if (!(await LoadPageAsync(pageNumber)).Branch(out var error))
             {
                 return error;
             }
@@ -145,7 +145,7 @@ public sealed class PagedCache<T> : IDisposable
         }
         finally
         {
-            _activeRequests.Remove(pageNumber, out _);
+            _activeRequests.TryRemove(pageNumber, out _);
         }
 
         async Task<ErrorState> Impl()
@@ -167,10 +167,10 @@ public sealed class PagedCache<T> : IDisposable
             var pageStartIndex = pageNumber * Config.PageSize;
             var result = await dataSource.TryGetPageAsync(pageStartIndex, buffer);
 
-            if (!OptionsMarshall.TryGetValue(result, out var elementsRead))
+            if (!result.Branch(out var elementsRead, out var error))
             {
                 PagePool.Push(buffer);
-                return OptionsMarshall.GetError(result);
+                return error;
             }
 
             @lock.EnterWriteLock();

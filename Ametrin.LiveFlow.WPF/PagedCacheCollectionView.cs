@@ -78,7 +78,7 @@ public sealed class PagedCacheCollectionView<T> : ICollectionView, IList<T>, IIt
         {
             if (index == -1) return default!;
 
-            if (OptionsMarshall.TryGetValue(Cache.TryGetValueFromCache(index), out var value))
+            if (Cache.TryGetValueFromCache(index).Branch(out var value))
             {
                 if (index > Cache.Config.PageSize)
                 {
