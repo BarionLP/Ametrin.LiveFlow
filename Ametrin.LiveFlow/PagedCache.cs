@@ -366,9 +366,10 @@ public sealed class PagedCache<T> : IDisposable
     internal readonly struct PagePoolWrapper(PagedCacheConfig config)
     {
         // assuming we won't always hit the max page number, this will make caches a little easier on memory
-        // TODO: when source sends no updates, ClearCache will probably never be called so this could be even lower
+        // TODO: when source sends no updates, ClearCache will probably never be called so this could be even lower because theoretically there should only ever be one or zero pages in cache
         private readonly Stack<T[]> pool = new(capacity: config.MaxPagesInCache / 2);
         private readonly PagedCacheConfig config = config;
+        public int Count => pool.Count;
 
         public T[] GetOrCreateBuffer()
         {

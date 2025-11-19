@@ -24,9 +24,12 @@ public static class PagedCacheCollectionView
             _ => throw new UnreachableException(),
         };
 
+// bug in the analyzer, will be fixed in 0.3.1
+#pragma warning disable AmOptional001 // Impossible Require call
         loadingItem ??= firstElement.Require<ExpandoObject>()
                 .Map(obj => (T)(object)obj.Aggregate(new ExpandoObject(), static (l, pair) => { ((IDictionary<string, object?>)l)[pair.Key] = pair.Value; return l; }))
                 .Or(static () => Activator.CreateInstance<T>());
+#pragma warning restore AmOptional001 // Impossible Require call
 
         return new PagedCacheCollectionView<T>(cache, count, new([.. properties]), loadingItem, disposeCache);
     }

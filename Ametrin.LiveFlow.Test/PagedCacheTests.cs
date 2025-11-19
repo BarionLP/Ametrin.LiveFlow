@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using Ametrin.Optional.Testing.TUnit;
-using TUnit.Assertions.AssertConditions.Throws;
 
 namespace Ametrin.LiveFlow.Test;
 
@@ -29,10 +28,10 @@ public sealed class PagedCacheTests
         await Assert.That(cache.TryGetValueAsync(PAGE_SIZE)).IsSuccess(data[PAGE_SIZE]);
         await Assert.That(cache.IsInCache(PAGE_SIZE)).IsTrue();
 
-        await Assert.That(cache.TryGetValueAsync(DATA_SIZE)).IsError(); // here we try loading it in cache
-        await Assert.That(cache.TryGetValueAsync(DATA_SIZE)).IsError(); // here we test the cache hit index checks
+        await Assert.That(await cache.TryGetValueAsync(DATA_SIZE)).IsError(); // here we try loading it in cache
+        await Assert.That(await cache.TryGetValueAsync(DATA_SIZE)).IsError(); // here we test the cache hit index checks
         await Assert.That(cache.TryGetValueFromCache(DATA_SIZE - 1)).IsSuccess(data[DATA_SIZE - 1]);
-        await Assert.That(cache.TryGetValueAsync(DATA_SIZE + PAGE_SIZE)).IsError();
+        await Assert.That(await cache.TryGetValueAsync(DATA_SIZE + PAGE_SIZE)).IsError();
 
         cache.ClearCache();
         await Assert.That(cache.PagePool.Count).IsEqualTo(3);
