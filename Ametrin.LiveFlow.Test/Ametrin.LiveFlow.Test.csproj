@@ -12,8 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Ametrin.Optional.Testing.TUnit" Version="0.2.5" />
-    <PackageReference Include="TUnit" Version="0.25.21" />
+    <PackageReference Include="Ametrin.Optional.Testing.TUnit" Version="0.3.0" />
+    <PackageReference Include="TUnit" Version="1.2.11" />
   </ItemGroup>
 
 </Project>
