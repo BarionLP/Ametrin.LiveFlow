@@ -69,6 +69,7 @@ public sealed class PagedCacheTests
 
         var task1 = cache.TryGetValueAsync(0);
         var task2 = cache.TryGetValueAsync(PAGE_SIZE);
+        var task5 = cache.TryGetValueAsync(PAGE_SIZE);
         var task3 = cache.TryGetValueAsync(PAGE_SIZE + 1);
         var task4 = cache.TryGetValueAsync(PAGE_SIZE * 2);
 
@@ -76,6 +77,7 @@ public sealed class PagedCacheTests
         await Assert.That(task2).IsSuccess(data[PAGE_SIZE]);
         await Assert.That(task3).IsSuccess(data[PAGE_SIZE + 1]);
         await Assert.That(task4).IsSuccess(data[PAGE_SIZE * 2]);
+        await Assert.That(task5).IsSuccess(data[PAGE_SIZE]);
 
         await Assert.That(cache.Dispose).ThrowsNothing();
     }
