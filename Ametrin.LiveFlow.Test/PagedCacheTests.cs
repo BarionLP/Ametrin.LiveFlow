@@ -65,13 +65,14 @@ public sealed class PagedCacheTests
         const int PAGE_SIZE = 128;
 
         ObservableCollection<string> data = [.. Enumerable.Range(0, DATA_SIZE).Select(static i => Guid.NewGuid().ToString())];
-        var cache = new PagedCache<string>(new FakeDataSource<string>(data, new() { Delay = TimeSpan.FromMilliseconds(200), MaxConcurrentConnections = 2 }), new() { PageSize = PAGE_SIZE, MaxPagesInCache = 3 });
+        var source = new FakeDataSource<string>(data, new() { Delay = TimeSpan.FromMilliseconds(200), MaxConcurrentConnections = 2 });
+        var cache = new PagedCache<string>(source, new() { PageSize = PAGE_SIZE, MaxPagesInCache = 3 });
 
-        var task1 = cache.TryGetValueAsync(0);
-        var task2 = cache.TryGetValueAsync(PAGE_SIZE);
-        var task5 = cache.TryGetValueAsync(PAGE_SIZE);
-        var task3 = cache.TryGetValueAsync(PAGE_SIZE + 1);
-        var task4 = cache.TryGetValueAsync(PAGE_SIZE * 2);
+        var task1 = Task.Run(() => cache.TryGetValueAsync(0)); // 1st request
+        var task2 = Task.Run(() => cache.TryGetValueAsync(PAGE_SIZE));
+        var task5 = Task.Run(() => cache.TryGetValueAsync(PAGE_SIZE));
+        var task3 = Task.Run(() => cache.TryGetValueAsync(PAGE_SIZE + 1)); // 2nd (just out of 1st page)
+        var task4 = Task.Run(() => cache.TryGetValueAsync(PAGE_SIZE * 2)); // 3rd request
 
         await Assert.That(task1).IsSuccess(data[0]);
         await Assert.That(task2).IsSuccess(data[PAGE_SIZE]);
