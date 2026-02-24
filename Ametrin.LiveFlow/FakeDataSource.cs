@@ -18,7 +18,7 @@ public sealed class FakeDataSource<T>(ObservableCollection<T> storage, FakeDataS
     public event NotifyCollectionChangedEventHandler? CollectionChanged { add => Storage.CollectionChanged += value; remove => Storage.CollectionChanged -= value; }
 
     private readonly SemaphoreSlim semaphore = new(config.MaxConcurrentConnections);
-    public async Task<Result<int>> TryGetPageAsync(int startIndex, T[] buffer)
+    public async Task<Result<int>> TryGetPageAsync(int startIndex, T[] buffer, CancellationToken token = default)
     {
         if (startIndex >= Storage.Count || startIndex < 0)
         {
@@ -26,8 +26,8 @@ public sealed class FakeDataSource<T>(ObservableCollection<T> storage, FakeDataS
         }
         var length = int.Min(buffer.Length, Storage.Count - startIndex);
 
-        await semaphore.WaitAsync();
-        await Task.Delay(Config.Delay);
+        await semaphore.WaitAsync(token);
+        await Task.Delay(Config.Delay, token);
 
         for (var i = 0; i < length; i++)
         {
@@ -38,9 +38,9 @@ public sealed class FakeDataSource<T>(ObservableCollection<T> storage, FakeDataS
         return Result.Success(length);
     }
 
-    public async Task<Option<int>> TryGetItemCountAsync()
+    public async Task<Option<int>> TryGetItemCountAsync(CancellationToken token = default)
     {
-        await Task.Delay(Config.Delay);
+        await Task.Delay(Config.Delay, token);
         return Option.Success(Storage.Count);
     }
 }

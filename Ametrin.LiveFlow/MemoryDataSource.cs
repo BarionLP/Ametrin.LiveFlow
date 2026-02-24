@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.Threading;
 
 namespace Ametrin.LiveFlow;
 
@@ -14,7 +15,7 @@ public sealed class MemoryDataSource<T>(ObservableCollection<T> storage) : IPage
 
     public event NotifyCollectionChangedEventHandler? CollectionChanged { add => Storage.CollectionChanged += value; remove => Storage.CollectionChanged -= value; }
 
-    public Task<Result<int>> TryGetPageAsync(int startIndex, T[] buffer)
+    public Task<Result<int>> TryGetPageAsync(int startIndex, T[] buffer, CancellationToken token = default)
     {
         if (startIndex >= Storage.Count || startIndex < 0)
         {
@@ -31,5 +32,5 @@ public sealed class MemoryDataSource<T>(ObservableCollection<T> storage) : IPage
         return Task.FromResult(Result.Success(length));
     }
 
-    public Task<Option<int>> TryGetItemCountAsync() => Task.FromResult(Option.Success(Storage.Count));
+    public Task<Option<int>> TryGetItemCountAsync(CancellationToken token = default) => Task.FromResult(Option.Success(Storage.Count));
 }
