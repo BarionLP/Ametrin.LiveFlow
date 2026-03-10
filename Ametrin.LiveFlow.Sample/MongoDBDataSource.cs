@@ -29,25 +29,38 @@ public sealed class MongoDBServerSource(IMongoCollection<BsonDocument> collectio
         return (int)await collection.CountDocumentsAsync(RowFilter, cancellationToken: token);
     }
 
-    public Task<Result<int>> TryGetPageAsync(int startIndex, BsonDocument[] buffer, CancellationToken token = default)
+    public async Task<Result<int>> TryGetPageAsync(int startIndex, BsonDocument[] buffer, CancellationToken token = default)
     {
+        if (buffer is null)
+        {
+            return new ArgumentNullException(nameof(buffer));
+        }
+
         if (startIndex < 0)
         {
-            return Task.FromResult(Result.Error<int>(new IndexOutOfRangeException()));
+            return new ArgumentOutOfRangeException(nameof(startIndex));
         }
 
-        var items = collection.Find(RowFilter).Sort(Builders<BsonDocument>.Sort.Ascending("_id")).Skip(startIndex).ToEnumerable(cancellationToken: token).Take(buffer.Length);
+        if (buffer.Length is 0)
+        {
+            return 0;
+        }
+
+        using var cursor = await collection.Find(RowFilter).Sort(Builders<BsonDocument>.Sort.Ascending("_id")).Skip(startIndex).Limit(buffer.Length).ToCursorAsync(token);
 
         var i = 0;
-        foreach (var doc in items)
+        while (i < buffer.Length && await cursor.MoveNextAsync(token))
         {
-            if (i >= buffer.Length) throw new UnreachableException();
-
-            buffer[i] = doc;
-            i++;
+            foreach (var doc in cursor.Current)
+            {
+                buffer[i++] = doc;
+                if (i >= buffer.Length)
+                    break;
+            }
         }
 
-        return Task.FromResult(Result.Success(i));
+
+        return i;
     }
 
     public void Dispose()
