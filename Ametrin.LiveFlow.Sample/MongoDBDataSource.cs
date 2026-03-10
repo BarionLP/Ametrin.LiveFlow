@@ -24,19 +24,19 @@ public sealed class MongoDBServerSource(IMongoCollection<BsonDocument> collectio
         }
     }
 
-    public async Task<Option<int>> TryGetItemCountAsync()
+    public async Task<Option<int>> TryGetItemCountAsync(CancellationToken token = default)
     {
-        return (int)await collection.CountDocumentsAsync(RowFilter);
+        return (int)await collection.CountDocumentsAsync(RowFilter, cancellationToken: token);
     }
 
-    public Task<Result<int>> TryGetPageAsync(int startIndex, BsonDocument[] buffer)
+    public Task<Result<int>> TryGetPageAsync(int startIndex, BsonDocument[] buffer, CancellationToken token = default)
     {
         if (startIndex < 0)
         {
             return Task.FromResult(Result.Error<int>(new IndexOutOfRangeException()));
         }
 
-        var items = collection.Find(RowFilter).Sort(Builders<BsonDocument>.Sort.Ascending("_id")).Skip(startIndex).ToEnumerable().Take(buffer.Length);
+        var items = collection.Find(RowFilter).Sort(Builders<BsonDocument>.Sort.Ascending("_id")).Skip(startIndex).ToEnumerable(cancellationToken: token).Take(buffer.Length);
 
         var i = 0;
         foreach (var doc in items)
@@ -48,5 +48,9 @@ public sealed class MongoDBServerSource(IMongoCollection<BsonDocument> collectio
         }
 
         return Task.FromResult(Result.Success(i));
+    }
+
+    public void Dispose()
+    {
     }
 }
