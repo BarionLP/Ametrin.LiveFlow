@@ -33,4 +33,6 @@ public sealed class MemoryDataSource<T>(ObservableCollection<T> storage) : IPage
     }
 
     public Task<Option<int>> TryGetItemCountAsync(CancellationToken token = default) => Task.FromResult(Option.Success(Storage.Count));
+
+    public void Dispose() { }
 }

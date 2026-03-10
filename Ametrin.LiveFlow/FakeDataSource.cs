@@ -43,6 +43,11 @@ public sealed class FakeDataSource<T>(ObservableCollection<T> storage, FakeDataS
         await Task.Delay(Config.Delay, token);
         return Option.Success(Storage.Count);
     }
+
+    public void Dispose()
+    {
+        semaphore.Dispose();
+    }
 }
 
 public sealed class FakeDataSourceConfig

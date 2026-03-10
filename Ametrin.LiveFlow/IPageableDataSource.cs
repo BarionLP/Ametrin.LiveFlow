@@ -2,7 +2,7 @@
 
 namespace Ametrin.LiveFlow;
 
-public interface IPageableDataSource<T>
+public interface IPageableDataSource<T> : IDisposable
 {
     /// <param name="startIndex">start index of the page</param>
     /// <param name="buffer">buffer to fill. Length is the page size</param>
